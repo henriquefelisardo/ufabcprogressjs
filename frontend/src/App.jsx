@@ -62,7 +62,8 @@ export default function App() {
 
     try {
       //const response = await fetch('http://localhost:8000/api/simular', { method: 'POST', body: formData });
-      const response = await fetch('/api/simular', { method: 'POST', body: formData });
+      //const response = await fetch('/api/simular', { method: 'POST', body: formData });
+      const response = await fetch('https://ufabcprogressjs.onrender.com//api/simular', { method: 'POST', body: formData });
       
       const result = await response.json();
       if (result.students && result.students.length > 0) {
@@ -73,9 +74,9 @@ export default function App() {
         setCenarioAtivo(hasAnyPdf ? 'atual' : 'novo');
       }
     } catch (err) {
-      alert("Falha de conexão com a API. Verifique se o FastAPI está rodando na porta 8000.");
+      alert("Falha de conexão com a API. Verifique se o servidor no Render está ativo.");
       console.error(err);
-    }
+}
     setLoading(false);
   };
 

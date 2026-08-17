@@ -24,6 +24,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+def health_check():
+    return {"status": "A API da UFABC está online e operando."}
+
 COLUNAS = [
     "ano_periodo", "categoria", "codigo", "componente_curricular",
     "creditos", "ch", "ch_ext", "turma", "conceito", "situacao", "docentes"
