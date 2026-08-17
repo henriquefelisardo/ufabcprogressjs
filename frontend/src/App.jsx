@@ -1,0 +1,361 @@
+import React, { useState, useMemo } from 'react';
+
+//npm run dev
+
+// Componente: Lista Sanfona (Expansível) Modernizada
+const ExpanderList = ({ title, icon, items, fallbackText }) => {
+  return (
+    <details className="bg-white/[0.02] rounded-xl border border-white/[0.05] mb-3 group overflow-hidden transition-all duration-300 hover:bg-white/[0.04]">
+      <summary className="p-4 cursor-pointer select-none font-medium flex items-center transition-colors outline-none text-gray-200">
+        <span className="mr-3 text-xl bg-white/[0.05] p-2 rounded-lg">{icon}</span>
+        {title} <span className="ml-2 text-sm text-gray-500">({items.length})</span>
+        <span className="ml-auto opacity-50 group-open:rotate-180 transition-transform duration-300">▼</span>
+      </summary>
+      <div className="p-4 pt-0 text-sm text-gray-400 max-h-60 overflow-y-auto">
+        {items.length > 0 ? (
+          <ul className="space-y-2">
+            {items.map((item, i) => (
+              <li key={i} className="flex items-center gap-2 before:content-[''] before:block before:w-1.5 before:h-1.5 before:rounded-full before:bg-indigo-500">
+                {item}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-gray-500 italic">{fallbackText || "Nenhuma disciplina."}</p>
+        )}
+      </div>
+    </details>
+  );
+};
+
+export default function App() {
+  const [studentsInput, setStudentsInput] = useState([{ id: 0, nome: 'Aluno 1', file: null, matricula: '' }]);
+  const [isArena, setIsArena] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [apiData, setApiData] = useState(null);
+
+  // Controles de Visão
+  const [cenarioAtivo, setCenarioAtivo] = useState('novo');
+  const [cursoSelecionado, setCursoSelecionado] = useState('');
+  const [arenaTab, setArenaTab] = useState('');
+
+  // Manipuladores de Inputs
+  const updateStudent = (index, field, value) => {
+    const updated = [...studentsInput];
+    updated[index][field] = value;
+    setStudentsInput(updated);
+  };
+
+  const addCompetitor = () => {
+    setStudentsInput([...studentsInput, { id: Date.now(), nome: `Competidor ${studentsInput.length + 1}`, file: null, matricula: '' }]);
+  };
+
+  const handleSimulate = async () => {
+    setLoading(true);
+    const formData = new FormData();
+    
+    studentsInput.forEach((s, idx) => {
+      formData.append(`nome_${idx}`, s.nome);
+      formData.append(`matricula_${idx}`, s.matricula);
+      if (s.file) formData.append(`file_${idx}`, s.file);
+    });
+
+    try {
+      const response = await fetch('http://localhost:8000/api/simular', { method: 'POST', body: formData });
+      const result = await response.json();
+      if (result.students && result.students.length > 0) {
+        setApiData(result);
+        setCursoSelecionado(result.cursos_disponiveis[0]);
+        setArenaTab(result.students[0].nome);
+        const hasAnyPdf = studentsInput.some(s => s.file !== null);
+        setCenarioAtivo(hasAnyPdf ? 'atual' : 'novo');
+      }
+    } catch (err) {
+      alert("Falha de conexão com a API. Verifique se o FastAPI está rodando na porta 8000.");
+      console.error(err);
+    }
+    setLoading(false);
+  };
+
+  const rankingGlobal = useMemo(() => {
+    if (!apiData) return [];
+    return apiData.cursos_disponiveis.map(curso => {
+      const row = { curso, maxPct: 0, chAproveitada: '' };
+      apiData.students.forEach(s => {
+        const pct = s.cursos[curso][cenarioAtivo].metricas.pct;
+        row[s.nome] = pct;
+        if (pct >= row.maxPct) {
+          row.maxPct = pct;
+          row.chAproveitada = `${s.cursos[curso][cenarioAtivo].metricas.ch_aproveitada}h / ${s.cursos[curso][cenarioAtivo].metricas.m_tot}h`;
+        }
+      });
+      return row;
+    }).sort((a, b) => b.maxPct - a.maxPct);
+  }, [apiData, cenarioAtivo]);
+
+  const renderPanel = (student) => {
+    const data = student.cursos[cursoSelecionado][cenarioAtivo];
+    const { metricas: m, listas: l } = data;
+    const missingOL = Math.ceil(m.pend_ol / 48);
+    const missingLIV = Math.ceil(m.pend_liv / 48);
+
+    return (
+      <div className="mt-8 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
+        {/* Métricas Principais (Glassy Cards com glowing borders) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="glass-panel p-6 rounded-2xl relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+            <h4 className="text-gray-400 text-sm font-medium tracking-wider mb-2 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-emerald-400"></div> Obrigatórias (OBR)
+            </h4>
+            <p className="text-4xl font-bold text-white tracking-tight">{m.real_obr}<span className="text-lg text-gray-500 font-normal">h</span></p>
+            <p className="text-sm text-emerald-400 mt-2 font-medium">Faltam {m.pend_obr}h</p>
+          </div>
+          
+          <div className="glass-panel p-6 rounded-2xl relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+            <h4 className="text-gray-400 text-sm font-medium tracking-wider mb-2 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-blue-400"></div> Opção Limitada (OL)
+            </h4>
+            <p className="text-4xl font-bold text-white tracking-tight">{m.real_ol}<span className="text-lg text-gray-500 font-normal">h</span></p>
+            <p className="text-sm text-blue-400 mt-2 font-medium">{m.excesso_ol === 0 ? `Faltam ${m.pend_ol}h` : `Sobram ${m.excesso_ol}h (Repassadas)`}</p>
+          </div>
+          
+          <div className="glass-panel p-6 rounded-2xl relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+            <h4 className="text-gray-400 text-sm font-medium tracking-wider mb-2 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-amber-400"></div> Livres (LIV)
+            </h4>
+            <p className="text-4xl font-bold text-white tracking-tight">{m.liv_aprov}<span className="text-lg text-gray-500 font-normal">h</span></p>
+            <p className="text-sm text-amber-400 mt-2 font-medium">Faltam {m.pend_liv}h</p>
+          </div>
+        </div>
+
+        {/* Progress Bar Premium */}
+        <div className="glass-panel p-8 rounded-2xl mb-8">
+          <div className="flex justify-between items-end mb-3">
+            <div className="flex flex-col">
+              <span className="text-gray-400 text-sm tracking-wider uppercase font-semibold">Carga Aproveitada</span>
+              <span className="text-2xl font-bold text-white">{m.ch_aproveitada}h <span className="text-gray-500 text-lg font-normal">/ {m.m_tot}h</span></span>
+            </div>
+            <span className="text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-cyan-400">
+              {m.pct.toFixed(2)}%
+            </span>
+          </div>
+          <div className="w-full bg-black/50 h-4 rounded-full overflow-hidden border border-white/5 backdrop-blur-md relative p-0.5">
+            <div 
+              className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 relative transition-all duration-1000 ease-out" 
+              style={{ width: `${Math.min(m.pct, 100)}%` }}
+            >
+               <div className="absolute top-0 right-0 bottom-0 left-0 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.4),transparent)] animate-pulse"></div>
+            </div>
+          </div>
+          {m.liv_desc > 0 && (
+            <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-300 text-sm animate-fade-in-up">
+              <span className="mr-2">⚠️</span> <b>Atenção:</b> Acumulou {m.saldo_livres}h em Livres (Teto: {m.m_liv}h). <b className="text-red-400">{m.liv_desc}h descartadas.</b>
+            </div>
+          )}
+        </div>
+
+        {/* Listas Expansíveis */}
+        <h3 className="text-2xl font-semibold mb-6 text-white/90 tracking-tight">Detalhamento de Disciplinas</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8">
+          <div className="space-y-2">
+            <ExpanderList title="OBR Concluídas" icon="🟢" items={l.obr} />
+            <ExpanderList title="OL Concluídas" icon="🔵" items={l.ol} />
+            <ExpanderList title="LIV Concluídas" icon="🟡" items={l.liv} />
+            {l.n_rec.length > 0 && (
+              <ExpanderList title="Não Reconhecidas" icon="⚠️" items={l.n_rec} fallbackText="Todas mapeadas com sucesso." />
+            )}
+          </div>
+          <div className="space-y-2 mt-4 lg:mt-0">
+            <ExpanderList title="OBR Faltantes" icon="🔴" items={l.faltam_obr} fallbackText="Todas as OBR concluídas! 🎉" />
+            
+            {missingOL > 0 && (
+              <details className="bg-white/[0.02] rounded-xl border border-white/[0.05] mb-3 group transition-colors hover:bg-white/[0.04]">
+                <summary className="p-4 cursor-pointer select-none font-medium flex items-center text-gray-200">
+                  <span className="mr-3 text-xl bg-white/[0.05] p-2 rounded-lg">⚙️</span> 
+                  OL Faltantes <span className="ml-2 text-indigo-400 font-bold">(~{missingOL})</span>
+                  <span className="ml-auto opacity-50 group-open:rotate-180 transition-transform">▼</span>
+                </summary>
+                <div className="p-4 pt-0 text-sm text-gray-500">Aproximação baseada na divisão da carga horária pendente por 48h.</div>
+              </details>
+            )}
+
+            {missingLIV > 0 && (
+              <details className="bg-white/[0.02] rounded-xl border border-white/[0.05] mb-3 group transition-colors hover:bg-white/[0.04]">
+                <summary className="p-4 cursor-pointer select-none font-medium flex items-center text-gray-200">
+                  <span className="mr-3 text-xl bg-white/[0.05] p-2 rounded-lg">💡</span> 
+                  LIV Faltantes <span className="ml-2 text-pink-400 font-bold">(~{missingLIV})</span>
+                  <span className="ml-auto opacity-50 group-open:rotate-180 transition-transform">▼</span>
+                </summary>
+                <div className="p-4 pt-0 text-sm text-gray-500">Aproximação baseada na divisão da carga horária pendente por 48h.</div>
+              </details>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen relative overflow-hidden font-sans pb-20">
+      {/* Background Animated Blobs + Noise Filter */}
+      <div className="fixed inset-0 z-0 bg-[#0a0a0a]">
+        <div className="absolute top-0 -left-4 w-96 h-96 bg-purple-700 rounded-full mix-blend-screen filter blur-[128px] opacity-40 animate-blob"></div>
+        <div className="absolute top-0 -right-4 w-96 h-96 bg-indigo-700 rounded-full mix-blend-screen filter blur-[128px] opacity-40 animate-blob animation-delay-2000"></div>
+        <div className="absolute -bottom-8 left-20 w-96 h-96 bg-pink-700 rounded-full mix-blend-screen filter blur-[128px] opacity-30 animate-blob animation-delay-4000"></div>
+        <div className="absolute inset-0 bg-noise opacity-30 pointer-events-none mix-blend-overlay"></div>
+      </div>
+
+      {/* Conteúdo Principal (z-10) */}
+      <div className="relative z-10 max-w-7xl mx-auto p-6 md:p-10 pt-12">
+        <header className="mb-12 text-center md:text-left animate-fade-in-up">
+          <h1 className="text-4xl md:text-6xl font-extrabold tracking-tighter mb-4 text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">
+            Dashboard Curricular <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-pink-400">UFABC</span>
+          </h1>
+          <p className="text-gray-400 text-lg md:text-xl font-light max-w-2xl">
+            Faça o upload do histórico e/ou simule disciplinas desejadas com dados oficiais.
+          </p>
+        </header>
+
+        {/* Inputs Section */}
+        <div className="glass-panel p-8 rounded-3xl mb-12 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+            <h2 className="text-2xl font-semibold tracking-tight">Configuração de Alunos</h2>
+            <button 
+              onClick={() => { setIsArena(true); addCompetitor(); }} 
+              className="text-sm font-semibold bg-white/10 hover:bg-white/20 border border-white/10 px-5 py-2.5 rounded-full transition-all duration-300 hover:shadow-[0_0_15px_rgba(255,255,255,0.1)] backdrop-blur-md"
+            >
+              ⚔️ Ativar Modo Arena
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {studentsInput.map((s, idx) => (
+              <div key={s.id} className="bg-black/30 p-6 rounded-2xl border border-white/5 backdrop-blur-sm transition-transform hover:-translate-y-1 duration-300">
+                {isArena && (
+                  <input 
+                    className="w-full bg-transparent border-b border-gray-600 focus:border-indigo-500 p-2 text-xl font-bold mb-5 outline-none transition-colors text-indigo-100 placeholder-gray-600" 
+                    value={s.nome} 
+                    onChange={e => updateStudent(idx, 'nome', e.target.value)} 
+                    placeholder="Nome do Competidor"
+                  />
+                )}
+                <label className="block text-sm font-medium text-gray-400 mb-2">📄 Histórico em PDF (Opcional)</label>
+                <input 
+                  type="file" accept=".pdf" 
+                  onChange={e => updateStudent(idx, 'file', e.target.files[0])} 
+                  className="w-full text-sm text-gray-500 mb-6 file:mr-4 file:py-2.5 file:px-5 file:rounded-xl file:border-0 file:bg-white/10 file:text-white file:font-semibold file:cursor-pointer hover:file:bg-white/20 transition-all"
+                />
+                <label className="block text-sm font-medium text-gray-400 mb-2">📝 Planejamento Futuro</label>
+                <textarea 
+                  className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all h-28 resize-none placeholder-gray-600"
+                  placeholder="Nomes soltos ou log do SIGAA..."
+                  value={s.matricula}
+                  onChange={e => updateStudent(idx, 'matricula', e.target.value)}
+                />
+              </div>
+            ))}
+          </div>
+
+          <button 
+            onClick={handleSimulate} disabled={loading}
+            className="mt-8 w-full py-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-bold text-lg rounded-2xl shadow-[0_0_20px_rgba(168,85,247,0.3)] transition-all duration-300 transform hover:scale-[1.01] active:scale-95 disabled:opacity-50 disabled:hover:scale-100 flex justify-center items-center gap-2"
+          >
+            {loading ? (
+              <><span className="animate-spin text-2xl">⚙️</span> Processando Motor...</>
+            ) : "Simular Matrículas 🚀"}
+          </button>
+        </div>
+
+        {apiData && (
+          <div className="space-y-12">
+            {/* Global Ranking */}
+            <div className="glass-panel p-8 rounded-3xl animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+              <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-6">
+                <h2 className="text-2xl font-semibold tracking-tight text-white flex items-center gap-3">
+                  <span className="p-2 bg-yellow-500/10 text-yellow-500 rounded-lg">🏆</span> Ranking Global
+                </h2>
+                
+                <div className="flex p-1 bg-black/40 rounded-xl border border-white/5 backdrop-blur-md w-full xl:w-auto overflow-x-auto">
+                  {['atual', 'projecao', 'novo'].map(cen => (
+                    <label key={cen} className={`flex-1 xl:flex-none cursor-pointer px-6 py-2.5 rounded-lg text-sm font-medium transition-all text-center whitespace-nowrap ${cenarioAtivo === cen ? 'bg-white/10 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'}`}>
+                      <input type="radio" className="hidden" checked={cenarioAtivo === cen} onChange={() => setCenarioAtivo(cen)} />
+                      {cen === 'atual' ? 'Situação Atual' : cen === 'projecao' ? 'Matriculadas' : 'Projeção Completa'}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-white/5">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-white/5 text-gray-400 text-sm tracking-wider uppercase">
+                      <th className="p-4 font-medium">Curso</th>
+                      {!isArena && <th className="p-4 font-medium w-32">Horas</th>}
+                      {apiData.students.map(s => <th key={s.nome} className="p-4 font-medium w-64">{s.nome}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {rankingGlobal.map(r => (
+                      <tr key={r.curso} className="hover:bg-white/[0.02] transition-colors">
+                        <td className="p-4 text-sm font-medium text-gray-200">{r.curso}</td>
+                        {!isArena && <td className="p-4 text-sm text-gray-500">{r.chAproveitada}</td>}
+                        {apiData.students.map(s => (
+                          <td key={s.nome} className="p-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-full bg-black/50 h-2 rounded-full overflow-hidden hidden md:block border border-white/5">
+                                <div className="bg-gradient-to-r from-indigo-500 to-pink-500 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${r[s.nome]}%` }}></div>
+                              </div>
+                              <span className="text-sm font-mono text-gray-300 w-12 text-right">{r[s.nome].toFixed(1)}%</span>
+                            </div>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Análise Detalhada */}
+            <div className="glass-panel p-8 rounded-3xl animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
+              <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6 border-b border-white/10 pb-6">
+                <h2 className="text-2xl font-semibold tracking-tight text-white flex items-center gap-3">
+                  <span className="p-2 bg-blue-500/10 text-blue-400 rounded-lg">📊</span> Inspeção por Curso
+                </h2>
+                
+                <select 
+                  value={cursoSelecionado} 
+                  onChange={e => setCursoSelecionado(e.target.value)}
+                  className="w-full lg:w-96 bg-black/40 text-gray-200 p-3 rounded-xl outline-none border border-white/10 focus:border-indigo-500 transition-colors font-medium appearance-none"
+                  style={{ backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'white\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3e%3cpolyline points=\'6 9 12 15 18 9\'%3e%3c/polyline%3e%3c/svg%3e")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1em' }}
+                >
+                  {apiData.cursos_disponiveis.map(c => <option key={c} value={c} className="bg-gray-900">{c}</option>)}
+                </select>
+              </div>
+
+              {isArena && (
+                <div className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
+                  {apiData.students.map(s => (
+                    <button 
+                      key={s.nome} onClick={() => setArenaTab(s.nome)}
+                      className={`px-6 py-2.5 rounded-full font-medium whitespace-nowrap transition-all duration-300 ${arenaTab === s.nome ? 'bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.4)]' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}
+                    >
+                      {s.nome}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {apiData.students.filter(s => !isArena || s.nome === arenaTab).map(student => (
+                <div key={student.nome}>{renderPanel(student)}</div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
