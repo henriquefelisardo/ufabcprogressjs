@@ -8,6 +8,10 @@ import csv
 import io
 from pathlib import Path
 
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
+
 #uvicorn main:app --reload
 
 app = FastAPI(title="UFABC Dashboard API")
@@ -260,3 +264,18 @@ async def simular_cenarios(request: Request):
         students_data.append({"nome": ext["nome"], "cursos": cursos_resultados})
         
     return {"status": "success", "students": students_data, "cursos_disponiveis": list(cursos_bd.keys())}
+
+
+# Monta a pasta 'dist' do React para ser servida pelo FastAPI
+dist_path = os.path.join(os.path.dirname(__file__), "dist")
+
+if os.path.exists(dist_path):
+    app.mount("/assets", StaticFiles(directory=os.path.join(dist_path, "assets")), name="assets")
+
+    @app.get("/{catchall:path}")
+    async def serve_react_app(catchall: str):
+        # Redireciona qualquer rota não-API para o index.html do React
+        file_path = os.path.join(dist_path, catchall)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(dist_path, "index.html"))

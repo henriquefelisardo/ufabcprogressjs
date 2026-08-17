@@ -61,7 +61,9 @@ export default function App() {
     });
 
     try {
-      const response = await fetch('http://localhost:8000/api/simular', { method: 'POST', body: formData });
+      //const response = await fetch('http://localhost:8000/api/simular', { method: 'POST', body: formData });
+      const response = await fetch('/api/simular', { method: 'POST', body: formData });
+      
       const result = await response.json();
       if (result.students && result.students.length > 0) {
         setApiData(result);
