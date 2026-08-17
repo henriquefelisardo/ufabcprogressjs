@@ -50,7 +50,9 @@ export default function App() {
     setStudentsInput([...studentsInput, { id: Date.now(), nome: `Competidor ${studentsInput.length + 1}`, file: null, matricula: '' }]);
   };
 
-  const handleSimulate = async () => {
+
+
+const handleSimulate = async () => {
     setLoading(true);
     const formData = new FormData();
     
@@ -61,22 +63,41 @@ export default function App() {
     });
 
     try {
+      const response = await fetch('https://ufabcprogressjs.onrender.com/api/simular', { method: 'POST', body: formData });
       //const response = await fetch('http://localhost:8000/api/simular', { method: 'POST', body: formData });
       //const response = await fetch('/api/simular', { method: 'POST', body: formData });
-      const response = await fetch('https://ufabcprogressjs.onrender.com//api/simular', { method: 'POST', body: formData });
       
+      // 1. CAPTURA ERROS DO SERVIDOR (Ex: 500 Internal Error)
+      if (!response.ok) {
+        const errorText = await response.text();
+        alert(`Erro no servidor do Render (Status ${response.status}):\n${errorText}`);
+        setLoading(false);
+        return;
+      }
+
       const result = await response.json();
+      
+      // 2. VERIFICA SE O CSV FOI LIDO PELO RENDER
+      if (result.cursos_disponiveis && result.cursos_disponiveis.length === 0) {
+          alert("O backend rodou, mas a lista de cursos está vazia!\nVocê esqueceu de subir o arquivo BASE_CURSOS.csv para o GitHub?");
+          setLoading(false);
+          return;
+      }
+
+      // 3. FLUXO NORMAL E BEM-SUCEDIDO
       if (result.students && result.students.length > 0) {
         setApiData(result);
         setCursoSelecionado(result.cursos_disponiveis[0]);
         setArenaTab(result.students[0].nome);
         const hasAnyPdf = studentsInput.some(s => s.file !== null);
         setCenarioAtivo(hasAnyPdf ? 'atual' : 'novo');
+      } else {
+        alert("A API respondeu, mas o formato dos dados está estranho:\n" + JSON.stringify(result));
       }
     } catch (err) {
-      alert("Falha de conexão com a API. Verifique se o servidor no Render está ativo.");
+      alert("Falha de rede ao tentar conectar com a API.");
       console.error(err);
-}
+    }
     setLoading(false);
   };
 
