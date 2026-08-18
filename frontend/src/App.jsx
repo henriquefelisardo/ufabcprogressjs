@@ -272,10 +272,10 @@ const handleSimulate = async () => {
                   onChange={e => updateStudent(idx, 'file', e.target.files[0])} 
                   className="w-full text-sm text-gray-500 mb-6 file:mr-4 file:py-2.5 file:px-5 file:rounded-xl file:border-0 file:bg-white/10 file:text-white file:font-semibold file:cursor-pointer hover:file:bg-white/20 transition-all"
                 />
-                <label className="block text-sm font-medium text-gray-400 mb-2">📝 Planejamento Futuro</label>
+                <label className="block text-sm font-medium text-gray-400 mb-2">📝 Planejamento Futuro (opcional)</label>
                 <textarea 
                   className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all h-28 resize-none placeholder-gray-600"
-                  placeholder="Nomes soltos ou log do SIGAA..."
+                  placeholder="Nomes soltos ou log de matricula..."
                   value={s.matricula}
                   onChange={e => updateStudent(idx, 'matricula', e.target.value)}
                 />
