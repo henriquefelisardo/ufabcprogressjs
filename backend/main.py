@@ -95,7 +95,32 @@ def extrair_componentes_pdf(bytes_arquivo):
                         linhas_brutas.append(normalizada)
     return linhas_brutas
 
-def extrair_texto_matricula(texto, dicionario_ch, catalogo_csv_ch):
+# --- 1. FUNÇÕES DO SEU SCRIPT DE RA (ADAPTADAS) ---
+def limpar_nome_disciplina(texto):
+    texto = re.sub(r'\s+[A-Za-z0-9]+-(Diurno|Noturno|Matutino|Vespertino)\s+\(.*?\)[\s]*.*$', '', texto, flags=re.IGNORECASE)
+    texto = texto.upper()
+    texto = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8')
+    return texto.strip()
+
+def buscar_disciplinas_ra(ra_alvo, caminho_csv="DADOS_2021-20262.csv"):
+    if not ra_alvo or not Path(caminho_csv).exists():
+        return []
+    encontradas = []
+    try:
+        with open(caminho_csv, mode='r', encoding='utf-8') as arquivo:
+            for linha in arquivo:
+                if not linha.strip(): continue
+                colunas = linha.strip().split(';')
+                # Se o CSV for separado por vírgula, troque para split(',')
+                if len(colunas) >= 3 and colunas[0] == ra_alvo:
+                    encontradas.append(limpar_nome_disciplina(colunas[2]))
+    except Exception as e:
+        print(f"Erro ao ler CSV de RA: {e}")
+        
+    return list(dict.fromkeys(encontradas)) # Remove duplicatas preservando ordem
+
+# --- 2. FUNÇÃO DE EXTRAÇÃO DE TEXTO ATUALIZADA (O(1) Match e Status Dinâmico) ---
+def extrair_texto_matricula(texto, dicionario_ch, catalogo_csv_ch, status_padrao='NOVA_MATR'):
     disciplinas = []
     if not texto.strip(): return disciplinas
     padrao_sigaa = r'(?:[A-Z]{3,4}\d{3,4}-\d{2}\s*-\s*)?(.*?)\s+(?:[A-Z]{1,3}\d{1,2}.*?)?TPI\s*\(\s*(\d+)\s*-\s*(\d+)'
@@ -106,22 +131,39 @@ def extrair_texto_matricula(texto, dicionario_ch, catalogo_csv_ch):
         match = re.search(padrao_sigaa, linha, re.IGNORECASE)
         if match:
             ch = (int(match.group(2)) + int(match.group(3))) * 12
-            disciplinas.append((padronizar_nome(match.group(1).strip()), ch, 'NOVA_MATR'))
+            disciplinas.append((padronizar_nome(match.group(1).strip()), ch, status_padrao))
         else:
             nome_limpo = padronizar_nome(linha)
-            if nome_limpo:
-                encontrado = False
-                for mat_pdf, ch_pdf in dicionario_ch.items():
-                    if nome_limpo == mat_pdf or nome_limpo in mat_pdf or mat_pdf in nome_limpo:
-                        disciplinas.append((mat_pdf, ch_pdf, 'NOVA_MATR'))
-                        encontrado = True; break
-                if not encontrado:
-                    for mat_csv, ch_csv in catalogo_csv_ch.items():
-                        if nome_limpo == mat_csv or nome_limpo in mat_csv or mat_csv in nome_limpo:
-                            disciplinas.append((mat_csv, ch_csv, 'NOVA_MATR'))
-                            encontrado = True; break
-                if not encontrado:
-                    disciplinas.append((nome_limpo, 0, 'NOVA_MATR'))
+            if not nome_limpo: continue
+
+            # Match Exato O(1): Blindagem contra Algoritmos I vs Algoritmos II
+            if nome_limpo in dicionario_ch:
+                disciplinas.append((nome_limpo, dicionario_ch[nome_limpo], status_padrao))
+                continue
+            if nome_limpo in catalogo_csv_ch:
+                disciplinas.append((nome_limpo, catalogo_csv_ch[nome_limpo], status_padrao))
+                continue
+
+            # Match Parcial O(n)
+            encontrado = False
+            for mat_pdf, ch_pdf in dicionario_ch.items():
+                if nome_limpo in mat_pdf or mat_pdf in nome_limpo:
+                    if mat_pdf.endswith(" I") and nome_limpo.endswith(" II"): continue
+                    disciplinas.append((mat_pdf, ch_pdf, status_padrao))
+                    encontrado = True
+                    break
+            
+            if not encontrado:
+                for mat_csv, ch_csv in catalogo_csv_ch.items():
+                    if nome_limpo in mat_csv or mat_csv in nome_limpo:
+                        if mat_csv.endswith(" I") and nome_limpo.endswith(" II"): continue
+                        disciplinas.append((mat_csv, ch_csv, status_padrao))
+                        encontrado = True
+                        break
+                        
+            if not encontrado:
+                disciplinas.append((nome_limpo, 0, status_padrao))
+                
     return disciplinas
 
 def carregar_banco_metas(caminho_csv="BASE_CURSOS.csv"):
@@ -187,7 +229,10 @@ cursos_bd, catalogo_csv_ch = carregar_banco_metas()
 
 def _calcular_cenario(hist_filtrado, dados_curso):
     real_obr = real_ol = real_liv = 0
-    for mat, ch in hist_filtrado:
+    vistos = set() # BLINDAGEM: Garante que a injeção da grade base não duplique carga de quem já fez
+    for mat, ch, s in hist_filtrado:
+        if mat in vistos: continue
+        vistos.add(mat)
         if mat in dados_curso["grade"]["OBR"]: real_obr += ch
         elif mat in dados_curso["grade"]["OL"]: real_ol += ch
         else: real_liv += ch
@@ -215,16 +260,19 @@ def _calcular_cenario(hist_filtrado, dados_curso):
 @app.post("/api/simular")
 async def simular_cenarios(request: Request):
     form = await request.form()
-    
     student_indices = set(key.split("_")[1] for key in form.keys() if key.startswith("nome_"))
     
     students_extracted = []
     dicionario_ch_global = {}
     
     idx_comp, idx_ch, idx_sit = COLUNAS.index("componente_curricular"), COLUNAS.index("ch"), COLUNAS.index("situacao")
+    
+    # Passagem 1: Extrai PDFs e Variáveis
     for idx in student_indices:
         nome = form.get(f"nome_{idx}", f"Competidor {int(idx)+1}")
         matricula = form.get(f"matricula_{idx}", "")
+        ra = form.get(f"ra_{idx}", "")
+        curso_base = form.get(f"curso_base_{idx}", "BCT") # Captura BCT/BCH
         file = form.get(f"file_{idx}")
         
         historico_limpo = []
@@ -239,26 +287,76 @@ async def simular_cenarios(request: Request):
                     if n not in dicionario_ch_global: 
                         dicionario_ch_global[n] = ch_val
                         
-        students_extracted.append({"nome": nome, "matricula": matricula, "historico_limpo": historico_limpo})
+        students_extracted.append({
+            "nome": nome, "matricula": matricula, "ra": ra, "curso_base": curso_base, "historico_limpo": historico_limpo
+        })
     
+    # Passagem 2: Processa Lógicas de Ano e Matrizes
     students_data = []
     for ext in students_extracted:
-        hist_atual = [(m, c) for m, c, s in ext["historico_limpo"] if s == 'APR']
-        hist_proj = [(m, c) for m, c, s in ext["historico_limpo"] if s in ['APR', 'MATR']]
-        novas_disciplinas = extrair_texto_matricula(ext["matricula"], dicionario_ch_global, catalogo_csv_ch)
-        hist_novo = hist_proj + [(m, c) for m, c, s in novas_disciplinas]
+        ra = ext["ra"]
+        curso_base = ext["curso_base"]
+        
+        # Extrai os dígitos 3 a 6 do RA para formar o ano
+        ano = 9999
+        if ra and len(ra) >= 6 and ra[2:6].isdigit():
+            ano = int(ra[2:6])
+            
+        materias_iniciais = []
+        if curso_base == 'BCH':
+            materias_iniciais = [
+                "INTRODUÇÃO ÀS HUMANIDADES E ÀS CIÊNCIAS SOCIAIS", "TEMAS E PROBLEMAS EM FILOSOFIA",
+                "IDENTIDADE E CULTURA", "INTERPRETAÇÕES DO BRASIL", "ESTRUTURA E DINÂMICA SOCIAL",
+                "BASES COMPUTACIONAIS DA CIÊNCIA"
+            ]
+        elif curso_base == 'BCT':
+            if ano <= 2022:
+                materias_iniciais = [
+                    "BASE EXPERIMENTAL DAS CIENCIAS NATURAIS", "ESTRUTURA DA MATERIA",
+                    "EVOLUCAO E DIVERSIFICACAO DA VIDA NA TERRA", "BASES COMPUTACIONAIS DA CIENCIA",
+                    "BASES MATEMATICAS", "BASES CONCEITUAIS DE ENERGIA"
+                ]
+            else:
+                materias_iniciais = [
+                    "BASE EXPERIMENTAL DAS CIÊNCIAS NATURAIS", "ESTRUTURA DA MATÉRIA",
+                    "EVOLUÇÃO E DIVERSIFICAÇÃO DA VIDA NA TERRA", "BASES EPISTEMOLÓGICAS DA CIÊNCIA MODERNA",
+                    "BASES MATEMÁTICAS", "BASES COMPUTACIONAIS DA CIÊNCIA"
+                ]
+
+        texto_iniciais = "\n".join(materias_iniciais)
+        disciplinas_iniciais = extrair_texto_matricula(texto_iniciais, dicionario_ch_global, catalogo_csv_ch, status_padrao='NOVA_MATR')
+
+        materias_ra = buscar_disciplinas_ra(ra)
+        texto_ra = "\n".join(materias_ra)
+        disciplinas_ra = extrair_texto_matricula(texto_ra, dicionario_ch_global, catalogo_csv_ch, status_padrao='NOVA_MATR')
+        
+        hist_base = ext["historico_limpo"] + disciplinas_ra
+        
+        hist_atual = [(m, c, s) for m, c, s in hist_base if s == 'APR']
+        hist_proj = [(m, c, s) for m, c, s in hist_base if s in ['APR', 'MATR', 'NOVA_MATR']]
+        
+        novas_disciplinas = extrair_texto_matricula(ext["matricula"], dicionario_ch_global, catalogo_csv_ch, status_padrao='NOVA_MATR')
+        
+        # Junta todas as listas com a projeção final
+        hist_novo = hist_proj + disciplinas_iniciais + [(m, c, s) for m, c, s in novas_disciplinas]
         
         cursos_resultados = {}
         for curso, dados in cursos_bd.items():
-            
             def agrupar_listas(hist_usado):
                 obr, ol, liv, n_rec = [], [], [], []
-                for mat, ch in hist_usado:
-                    if ch == 0 and mat not in n_rec: n_rec.append(mat)
-                    elif mat in dados["grade"]["OBR"] and mat not in obr: obr.append(mat)
-                    elif mat in dados["grade"]["OL"] and mat not in ol: ol.append(mat)
-                    elif mat not in liv: liv.append(mat)
-                return {"obr": obr, "ol": ol, "liv": liv, "n_rec": n_rec, "faltam_obr": sorted(list(dados["grade"]["OBR"] - set(obr)))}
+                vistos = set()
+                for mat, ch, s in hist_usado:
+                    if mat in vistos: continue
+                    vistos.add(mat)
+                    item = {"nome": mat, "ch": ch, "status": s}
+                    if ch == 0: n_rec.append(item)
+                    elif mat in dados["grade"]["OBR"]: obr.append(item)
+                    elif mat in dados["grade"]["OL"]: ol.append(item)
+                    else: liv.append(item)
+                return {
+                    "obr": obr, "ol": ol, "liv": liv, "n_rec": n_rec, 
+                    "faltam_obr": sorted(list(dados["grade"]["OBR"] - vistos))
+                }
 
             cursos_resultados[curso] = {
                 "atual": {"metricas": _calcular_cenario(hist_atual, dados), "listas": agrupar_listas(hist_atual)},
