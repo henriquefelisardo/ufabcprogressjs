@@ -441,7 +441,7 @@ export default function App() {
                   <thead>
                     <tr className="bg-white/5 text-gray-400 text-sm tracking-wider uppercase">
                       <th className="p-4 font-medium">Curso</th>
-                      {!isArena && <th className="p-4 font-medium w-32">Horas</th>}
+                      {!isArena && <th className="p-4 font-medium w-12">Horas</th>}
                       {apiData.students.map(s => <th key={s.nome} className="p-4 font-medium w-64">{s.nome}</th>)}
                     </tr>
                   </thead>
