@@ -1,9 +1,6 @@
 import React, { useState, useMemo } from 'react';
 
-//npm run dev
-
-// Componente: Lista Sanfona (Expansível) Modernizada
-const ExpanderList = ({ title, icon, items, fallbackText }) => {
+const ExpanderList = ({ title, icon, items, fallbackText, studentName, disabledList = [], onToggle }) => {
   return (
     <details className="bg-white/[0.02] rounded-xl border border-white/[0.05] mb-3 group overflow-hidden transition-all duration-300 hover:bg-white/[0.04]">
       <summary className="p-4 cursor-pointer select-none font-medium flex items-center transition-colors outline-none text-gray-200">
@@ -14,11 +11,35 @@ const ExpanderList = ({ title, icon, items, fallbackText }) => {
       <div className="p-4 pt-0 text-sm text-gray-400 max-h-60 overflow-y-auto">
         {items.length > 0 ? (
           <ul className="space-y-2">
-            {items.map((item, i) => (
-              <li key={i} className="flex items-center gap-2 before:content-[''] before:block before:w-1.5 before:h-1.5 before:rounded-full before:bg-indigo-500">
-                {item}
-              </li>
-            ))}
+            {items.map((item, i) => {
+              const isObj = typeof item === 'object';
+              const name = isObj ? item.nome : item;
+              const ch = isObj ? item.ch : null;
+              const status = isObj ? item.status : null;
+              
+              const canDisable = status && status !== 'APR';
+              const isDisabled = disabledList.includes(name);
+
+              return (
+                <li key={i} className={`flex items-center gap-3 transition-all ${isDisabled ? 'opacity-40' : 'opacity-100'}`}>
+                  {canDisable ? (
+                    <input 
+                      type="checkbox" 
+                      checked={!isDisabled} 
+                      onChange={() => onToggle && onToggle(studentName, name)} 
+                      className="w-4 h-4 cursor-pointer accent-indigo-500 shrink-0"
+                    />
+                  ) : (
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0 ml-1.5"></span>
+                  )}
+                  <span className={isDisabled ? 'line-through text-gray-500' : 'text-gray-300'}>
+                    {name} {ch > 0 && <span className="text-xs text-gray-500 ml-1">({ch}h)</span>}
+                  </span>
+                  {status === 'MATR' && <span className="ml-auto shrink-0 text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded uppercase font-bold">Cursando</span>}
+                  {status === 'NOVA_MATR' && <span className="ml-auto shrink-0 text-[10px] bg-pink-500/10 text-pink-400 px-2 py-0.5 rounded uppercase font-bold">Projetada</span>}
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <p className="text-gray-500 italic">{fallbackText || "Nenhuma disciplina."}</p>
@@ -34,12 +55,13 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [apiData, setApiData] = useState(null);
 
-  // Controles de Visão
   const [cenarioAtivo, setCenarioAtivo] = useState('novo');
   const [cursoSelecionado, setCursoSelecionado] = useState('');
   const [arenaTab, setArenaTab] = useState('');
+  
+  // Registro de classes desativadas mantido em memória e atrelado ao nome do competidor
+  const [disabledSubjects, setDisabledSubjects] = useState({});
 
-  // Manipuladores de Inputs
   const updateStudent = (index, field, value) => {
     const updated = [...studentsInput];
     updated[index][field] = value;
@@ -50,10 +72,51 @@ export default function App() {
     setStudentsInput([...studentsInput, { id: Date.now(), nome: `Competidor ${studentsInput.length + 1}`, file: null, matricula: '' }]);
   };
 
+  const toggleSubject = (studentName, subjectName) => {
+    setDisabledSubjects(prev => {
+      const currentDisabled = prev[studentName] || [];
+      if (currentDisabled.includes(subjectName)) {
+        return { ...prev, [studentName]: currentDisabled.filter(name => name !== subjectName) };
+      }
+      return { ...prev, [studentName]: [...currentDisabled, subjectName] };
+    });
+  };
 
+  const getRecalculatedMetrics = (studentName, curso, cenario) => {
+    const student = apiData.students.find(s => s.nome === studentName);
+    const data = student.cursos[curso][cenario];
+    const origM = data.metricas;
+    const l = data.listas;
+    
+    const disabled = disabledSubjects[studentName] || [];
+    if (disabled.length === 0) return origM;
 
-const handleSimulate = async () => {
+    const sumCH = (list) => list.filter(item => !disabled.includes(item.nome)).reduce((acc, curr) => acc + curr.ch, 0);
+
+    const real_obr = sumCH(l.obr);
+    const real_ol = sumCH(l.ol);
+    const real_liv = sumCH(l.liv);
+    const { m_obr, m_ol, m_liv, m_tot } = origM;
+
+    const pend_obr = Math.max(0, m_obr - real_obr);
+    const pend_ol = Math.max(0, m_ol - real_ol);
+    const excesso_ol = Math.max(0, real_ol - m_ol);
+
+    const saldo_livres = real_liv + excesso_ol;
+    const liv_aprov = Math.min(saldo_livres, m_liv);
+    const liv_desc = Math.max(0, saldo_livres - m_liv);
+    const pend_liv = Math.max(0, m_liv - liv_aprov);
+
+    const ch_aproveitada = real_obr + (real_ol - excesso_ol) + liv_aprov;
+    const pend_geral = Math.max(0, m_tot - ch_aproveitada);
+    const pct = m_tot > 0 ? (ch_aproveitada / m_tot) * 100 : 0;
+
+    return { real_obr, pend_obr, m_obr, real_ol, pend_ol, m_ol, excesso_ol, saldo_livres, liv_aprov, pend_liv, m_liv, liv_desc, ch_aproveitada, pend_geral, m_tot, pct };
+  };
+
+  const handleSimulate = async () => {
     setLoading(true);
+    setDisabledSubjects({}); // Reseta o estado local ao simular novamente
     const formData = new FormData();
     
     studentsInput.forEach((s, idx) => {
@@ -66,37 +129,29 @@ const handleSimulate = async () => {
       //const response = await fetch('https://ufabcprogressjs.onrender.com/api/simular', { method: 'POST', body: formData });
       const response = await fetch('http://localhost:8000/api/simular', { method: 'POST', body: formData });
       //const response = await fetch('/api/simular', { method: 'POST', body: formData });
-      
-      // 1. CAPTURA ERROS DO SERVIDOR (Ex: 500 Internal Error)
+
       if (!response.ok) {
         const errorText = await response.text();
-        alert(`Erro no servidor do Render (Status ${response.status}):\n${errorText}`);
-        setLoading(false);
-        return;
+        alert(`Erro no servidor (Status ${response.status}):\n${errorText}`);
+        setLoading(false); return;
       }
 
       const result = await response.json();
       
-      // 2. VERIFICA SE O CSV FOI LIDO PELO RENDER
       if (result.cursos_disponiveis && result.cursos_disponiveis.length === 0) {
-          alert("O backend rodou, mas a lista de cursos está vazia!\nVocê esqueceu de subir o arquivo BASE_CURSOS.csv para o GitHub?");
-          setLoading(false);
-          return;
+          alert("O backend rodou, mas a lista de cursos está vazia!");
+          setLoading(false); return;
       }
 
-      // 3. FLUXO NORMAL E BEM-SUCEDIDO
       if (result.students && result.students.length > 0) {
         setApiData(result);
         setCursoSelecionado(result.cursos_disponiveis[0]);
         setArenaTab(result.students[0].nome);
         const hasAnyPdf = studentsInput.some(s => s.file !== null);
         setCenarioAtivo(hasAnyPdf ? 'atual' : 'novo');
-      } else {
-        alert("A API respondeu, mas o formato dos dados está estranho:\n" + JSON.stringify(result));
       }
     } catch (err) {
       alert("Falha de rede ao tentar conectar com a API.");
-      console.error(err);
     }
     setLoading(false);
   };
@@ -106,26 +161,30 @@ const handleSimulate = async () => {
     return apiData.cursos_disponiveis.map(curso => {
       const row = { curso, maxPct: 0, chAproveitada: '' };
       apiData.students.forEach(s => {
-        const pct = s.cursos[curso][cenarioAtivo].metricas.pct;
-        row[s.nome] = pct;
-        if (pct >= row.maxPct) {
-          row.maxPct = pct;
-          row.chAproveitada = `${s.cursos[curso][cenarioAtivo].metricas.ch_aproveitada}h / ${s.cursos[curso][cenarioAtivo].metricas.m_tot}h`;
+        const m = getRecalculatedMetrics(s.nome, curso, cenarioAtivo);
+        row[s.nome] = m.pct;
+        if (m.pct >= row.maxPct) {
+          row.maxPct = m.pct;
+          row.chAproveitada = `${m.ch_aproveitada}h / ${m.m_tot}h`;
         }
       });
       return row;
     }).sort((a, b) => b.maxPct - a.maxPct);
-  }, [apiData, cenarioAtivo]);
+  }, [apiData, cenarioAtivo, disabledSubjects]); // Força re-render caso o checkbox altere o estado
 
   const renderPanel = (student) => {
     const data = student.cursos[cursoSelecionado][cenarioAtivo];
-    const { metricas: m, listas: l } = data;
+    const { listas: l } = data;
+    
+    // Injeção de recálculo dinâmico
+    const m = getRecalculatedMetrics(student.nome, cursoSelecionado, cenarioAtivo);
+    const disabledList = disabledSubjects[student.nome] || [];
+    
     const missingOL = Math.ceil(m.pend_ol / 48);
     const missingLIV = Math.ceil(m.pend_liv / 48);
 
     return (
       <div className="mt-8 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
-        {/* Métricas Principais (Glassy Cards com glowing borders) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="glass-panel p-6 rounded-2xl relative overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
@@ -155,7 +214,6 @@ const handleSimulate = async () => {
           </div>
         </div>
 
-        {/* Progress Bar Premium */}
         <div className="glass-panel p-8 rounded-2xl mb-8">
           <div className="flex justify-between items-end mb-3">
             <div className="flex flex-col">
@@ -181,19 +239,18 @@ const handleSimulate = async () => {
           )}
         </div>
 
-        {/* Listas Expansíveis */}
         <h3 className="text-2xl font-semibold mb-6 text-white/90 tracking-tight">Detalhamento de Disciplinas</h3>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8">
           <div className="space-y-2">
-            <ExpanderList title="OBR Concluídas" icon="🟢" items={l.obr} />
-            <ExpanderList title="OL Concluídas" icon="🔵" items={l.ol} />
-            <ExpanderList title="LIV Concluídas" icon="🟡" items={l.liv} />
+            <ExpanderList title="OBR Registradas" icon="🟢" items={l.obr} studentName={student.nome} disabledList={disabledList} onToggle={toggleSubject} />
+            <ExpanderList title="OL Registradas" icon="🔵" items={l.ol} studentName={student.nome} disabledList={disabledList} onToggle={toggleSubject} />
+            <ExpanderList title="LIV Registradas" icon="🟡" items={l.liv} studentName={student.nome} disabledList={disabledList} onToggle={toggleSubject} />
             {l.n_rec.length > 0 && (
-              <ExpanderList title="Não Reconhecidas" icon="⚠️" items={l.n_rec} fallbackText="Todas mapeadas com sucesso." />
+              <ExpanderList title="Não Reconhecidas" icon="⚠️" items={l.n_rec} fallbackText="Todas mapeadas com sucesso." studentName={student.nome} disabledList={disabledList} onToggle={toggleSubject} />
             )}
           </div>
           <div className="space-y-2 mt-4 lg:mt-0">
-            <ExpanderList title="OBR Faltantes" icon="🔴" items={l.faltam_obr} fallbackText="Todas as OBR concluídas! 🎉" />
+            <ExpanderList title="OBR Faltantes" icon="🔴" items={l.faltam_obr} fallbackText="Todas as OBR concluídas! 🎉" disabledList={disabledList} />
             
             {missingOL > 0 && (
               <details className="bg-white/[0.02] rounded-xl border border-white/[0.05] mb-3 group transition-colors hover:bg-white/[0.04]">
@@ -224,7 +281,6 @@ const handleSimulate = async () => {
 
   return (
     <div className="min-h-screen relative overflow-hidden font-sans pb-20">
-      {/* Background Animated Blobs + Noise Filter */}
       <div className="fixed inset-0 z-0 bg-[#0a0a0a]">
         <div className="absolute top-0 -left-4 w-96 h-96 bg-purple-700 rounded-full mix-blend-screen filter blur-[128px] opacity-40 animate-blob"></div>
         <div className="absolute top-0 -right-4 w-96 h-96 bg-indigo-700 rounded-full mix-blend-screen filter blur-[128px] opacity-40 animate-blob animation-delay-2000"></div>
@@ -232,7 +288,6 @@ const handleSimulate = async () => {
         <div className="absolute inset-0 bg-noise opacity-30 pointer-events-none mix-blend-overlay"></div>
       </div>
 
-      {/* Conteúdo Principal (z-10) */}
       <div className="relative z-10 max-w-7xl mx-auto p-6 md:p-10 pt-12">
         <header className="mb-12 text-center md:text-left animate-fade-in-up">
           <h1 className="text-4xl md:text-6xl font-extrabold tracking-tighter mb-4 text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">
@@ -243,7 +298,6 @@ const handleSimulate = async () => {
           </p>
         </header>
 
-        {/* Inputs Section */}
         <div className="glass-panel p-8 rounded-3xl mb-12 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
             <h2 className="text-2xl font-semibold tracking-tight">Configuração de Alunos</h2>
@@ -295,7 +349,6 @@ const handleSimulate = async () => {
 
         {apiData && (
           <div className="space-y-12">
-            {/* Global Ranking */}
             <div className="glass-panel p-8 rounded-3xl animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
               <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-6">
                 <h2 className="text-2xl font-semibold tracking-tight text-white flex items-center gap-3">
@@ -343,7 +396,6 @@ const handleSimulate = async () => {
               </div>
             </div>
 
-            {/* Análise Detalhada */}
             <div className="glass-panel p-8 rounded-3xl animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
               <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6 border-b border-white/10 pb-6">
                 <h2 className="text-2xl font-semibold tracking-tight text-white flex items-center gap-3">

@@ -187,7 +187,8 @@ cursos_bd, catalogo_csv_ch = carregar_banco_metas()
 
 def _calcular_cenario(hist_filtrado, dados_curso):
     real_obr = real_ol = real_liv = 0
-    for mat, ch in hist_filtrado:
+    # Adicionado 's' (status) no desempacotamento da tupla
+    for mat, ch, s in hist_filtrado:
         if mat in dados_curso["grade"]["OBR"]: real_obr += ch
         elif mat in dados_curso["grade"]["OL"]: real_ol += ch
         else: real_liv += ch
@@ -243,22 +244,31 @@ async def simular_cenarios(request: Request):
     
     students_data = []
     for ext in students_extracted:
-        hist_atual = [(m, c) for m, c, s in ext["historico_limpo"] if s == 'APR']
-        hist_proj = [(m, c) for m, c, s in ext["historico_limpo"] if s in ['APR', 'MATR']]
+        # Mantendo o status na construção das listas
+        hist_atual = [(m, c, s) for m, c, s in ext["historico_limpo"] if s == 'APR']
+        hist_proj = [(m, c, s) for m, c, s in ext["historico_limpo"] if s in ['APR', 'MATR']]
         novas_disciplinas = extrair_texto_matricula(ext["matricula"], dicionario_ch_global, catalogo_csv_ch)
-        hist_novo = hist_proj + [(m, c) for m, c, s in novas_disciplinas]
+        hist_novo = hist_proj + [(m, c, s) for m, c, s in novas_disciplinas]
         
         cursos_resultados = {}
         for curso, dados in cursos_bd.items():
             
             def agrupar_listas(hist_usado):
                 obr, ol, liv, n_rec = [], [], [], []
-                for mat, ch in hist_usado:
-                    if ch == 0 and mat not in n_rec: n_rec.append(mat)
-                    elif mat in dados["grade"]["OBR"] and mat not in obr: obr.append(mat)
-                    elif mat in dados["grade"]["OL"] and mat not in ol: ol.append(mat)
-                    elif mat not in liv: liv.append(mat)
-                return {"obr": obr, "ol": ol, "liv": liv, "n_rec": n_rec, "faltam_obr": sorted(list(dados["grade"]["OBR"] - set(obr)))}
+                vistos = set()
+                # Monta dicionários com nome, CH e status para o React
+                for mat, ch, s in hist_usado:
+                    if mat in vistos: continue
+                    vistos.add(mat)
+                    item = {"nome": mat, "ch": ch, "status": s}
+                    if ch == 0: n_rec.append(item)
+                    elif mat in dados["grade"]["OBR"]: obr.append(item)
+                    elif mat in dados["grade"]["OL"]: ol.append(item)
+                    else: liv.append(item)
+                return {
+                    "obr": obr, "ol": ol, "liv": liv, "n_rec": n_rec, 
+                    "faltam_obr": sorted(list(dados["grade"]["OBR"] - vistos))
+                }
 
             cursos_resultados[curso] = {
                 "atual": {"metricas": _calcular_cenario(hist_atual, dados), "listas": agrupar_listas(hist_atual)},
