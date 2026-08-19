@@ -449,7 +449,7 @@ export default function App() {
                     {rankingGlobal.map(r => (
                       <tr key={r.curso} className="hover:bg-white/[0.02] transition-colors">
                         <td className="p-4 text-sm font-medium text-gray-200">{r.curso}</td>
-                        {!isArena && <td className="p-4 text-sm text-gray-300">{r.chAproveitada}</td>}
+                        {!isArena && <td className="p-4 text-sm text-gray-100">{r.chAproveitada}</td>}
                         {apiData.students.map(s => (
                           <td key={s.nome} className="p-4 min-w-[140px]">
                             <div className="flex items-center gap-3">
