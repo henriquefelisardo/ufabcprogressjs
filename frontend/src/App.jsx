@@ -1,9 +1,8 @@
 import React, { useState, useMemo } from 'react';
 
 // Componente: Lista Sanfona (Expansível) Modernizada e Alfabética
-const ExpanderList = ({ title, icon, items, fallbackText, studentName, disabledList = [], onToggle, hideCheckbox = false }) => {
+const ExpanderList = ({ title, icon, items, fallbackText, studentName, toggledList = [], onToggle, hideCheckbox = false, startsChecked = true, allowDisableApr = false }) => {
   
-  // Ordenação Alfabética da Lista
   const sortedItems = [...items].sort((a, b) => {
     const nameA = typeof a === 'object' ? a.nome : a;
     const nameB = typeof b === 'object' ? b.nome : b;
@@ -26,27 +25,27 @@ const ExpanderList = ({ title, icon, items, fallbackText, studentName, disabledL
               const ch = isObj ? item.ch : null;
               const status = isObj ? item.status : null;
               
-              // Nova regra: se hideCheckbox for true, o checkbox nunca é renderizado
-              const canDisable = status && status !== 'APR' && !hideCheckbox;
-              const isDisabled = disabledList.includes(name);
+              const canDisable = !hideCheckbox && (status !== 'APR' || allowDisableApr || status === 'FALTA');
+              const isChecked = startsChecked ? !toggledList.includes(name) : toggledList.includes(name);
 
               return (
-                <li key={i} className={`flex items-center gap-3 transition-all ${isDisabled ? 'opacity-40' : 'opacity-100'}`}>
+                <li key={i} className={`flex items-center gap-3 transition-all ${!isChecked ? 'opacity-40' : 'opacity-100'}`}>
                   {canDisable ? (
                     <input 
                       type="checkbox" 
-                      checked={!isDisabled} 
+                      checked={isChecked} 
                       onChange={() => onToggle && onToggle(studentName, name)} 
                       className="w-4 h-4 cursor-pointer accent-indigo-500 shrink-0"
                     />
                   ) : (
                     <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0 ml-1.5"></span>
                   )}
-                  <span className={isDisabled ? 'line-through text-gray-500' : 'text-gray-300'}>
+                  <span className={!isChecked ? 'line-through text-gray-500' : 'text-gray-300'}>
                     {name} {ch > 0 && <span className="text-xs text-gray-500 ml-1">({ch}h)</span>}
                   </span>
                   {status === 'MATR' && <span className="ml-auto shrink-0 text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded uppercase font-bold">Cursando</span>}
                   {status === 'NOVA_MATR' && <span className="ml-auto shrink-0 text-[10px] bg-pink-500/10 text-pink-400 px-2 py-0.5 rounded uppercase font-bold">Projetada</span>}
+                  {status === 'FALTA' && <span className="ml-auto shrink-0 text-[10px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded uppercase font-bold">Pendente</span>}
                 </li>
               );
             })}
@@ -69,8 +68,8 @@ export default function App() {
   const [cursoSelecionado, setCursoSelecionado] = useState('');
   const [arenaTab, setArenaTab] = useState('');
   
-  // Registro de classes desativadas mantido em memória e atrelado ao nome do competidor
   const [disabledSubjects, setDisabledSubjects] = useState({});
+  const [enabledMissingSubjects, setEnabledMissingSubjects] = useState({});
 
   const updateStudent = (index, field, value) => {
     const updated = [...studentsInput];
@@ -82,7 +81,6 @@ export default function App() {
     setStudentsInput([...studentsInput, { id: Date.now(), nome: `Competidor ${studentsInput.length + 1}`, file: null, matricula: '', ra: '', curso_base: 'BCT' }]);
   };
 
-  // Função para remover um competidor
   const removeCompetitor = (idToRemove) => {
     if (studentsInput.length > 1) {
       setStudentsInput(studentsInput.filter(s => s.id !== idToRemove));
@@ -91,11 +89,17 @@ export default function App() {
 
   const toggleSubject = (studentName, subjectName) => {
     setDisabledSubjects(prev => {
-      const currentDisabled = prev[studentName] || [];
-      if (currentDisabled.includes(subjectName)) {
-        return { ...prev, [studentName]: currentDisabled.filter(name => name !== subjectName) };
-      }
-      return { ...prev, [studentName]: [...currentDisabled, subjectName] };
+      const current = prev[studentName] || [];
+      if (current.includes(subjectName)) return { ...prev, [studentName]: current.filter(name => name !== subjectName) };
+      return { ...prev, [studentName]: [...current, subjectName] };
+    });
+  };
+
+  const toggleMissingSubject = (studentName, subjectName) => {
+    setEnabledMissingSubjects(prev => {
+      const current = prev[studentName] || [];
+      if (current.includes(subjectName)) return { ...prev, [studentName]: current.filter(name => name !== subjectName) };
+      return { ...prev, [studentName]: [...current, subjectName] };
     });
   };
 
@@ -106,11 +110,13 @@ export default function App() {
     const l = data.listas;
     
     const disabled = disabledSubjects[studentName] || [];
-    if (disabled.length === 0) return origM;
+    const enabledMissing = enabledMissingSubjects[studentName] || [];
+    if (disabled.length === 0 && enabledMissing.length === 0) return origM;
 
     const sumCH = (list) => list.filter(item => !disabled.includes(item.nome)).reduce((acc, curr) => acc + curr.ch, 0);
+    const extraObrCH = l.faltam_obr.filter(item => enabledMissing.includes(item.nome)).reduce((acc, curr) => acc + curr.ch, 0);
 
-    const real_obr = sumCH(l.obr);
+    const real_obr = sumCH(l.obr) + extraObrCH;
     const real_ol = sumCH(l.ol);
     const real_liv = sumCH(l.liv);
     const { m_obr, m_ol, m_liv, m_tot } = origM;
@@ -134,6 +140,7 @@ export default function App() {
   const handleSimulate = async () => {
     setLoading(true);
     setDisabledSubjects({});
+    setEnabledMissingSubjects({});
     const formData = new FormData();
     
     studentsInput.forEach((s, idx) => {
@@ -145,8 +152,8 @@ export default function App() {
     });
 
     try {
-      //const response = await fetch('https://ufabcprogressjs.onrender.com/api/simular', { method: 'POST', body: formData });
-      const response = await fetch('http://localhost:8000/api/simular', { method: 'POST', body: formData });
+      const response = await fetch('https://ufabcprogressjs.onrender.com/api/simular', { method: 'POST', body: formData });
+      //const response = await fetch('http://localhost:8000/api/simular', { method: 'POST', body: formData });
       //const response = await fetch('/api/simular', { method: 'POST', body: formData });
 
       if (!response.ok) {
@@ -189,15 +196,15 @@ export default function App() {
       });
       return row;
     }).sort((a, b) => b.maxPct - a.maxPct);
-  }, [apiData, cenarioAtivo, disabledSubjects]); // Força re-render caso o checkbox altere o estado
+  }, [apiData, cenarioAtivo, disabledSubjects, enabledMissingSubjects]);
 
   const renderPanel = (student) => {
     const data = student.cursos[cursoSelecionado][cenarioAtivo];
     const { listas: l } = data;
     
-    // Injeção de recálculo dinâmico
     const m = getRecalculatedMetrics(student.nome, cursoSelecionado, cenarioAtivo);
     const disabledList = disabledSubjects[student.nome] || [];
+    const enabledMissingList = enabledMissingSubjects[student.nome] || [];
     
     const missingOL = Math.ceil(m.pend_ol / 48);
     const missingLIV = Math.ceil(m.pend_liv / 48);
@@ -261,9 +268,9 @@ export default function App() {
         <h3 className="text-2xl font-semibold mb-6 text-white/90 tracking-tight">Detalhamento de Disciplinas</h3>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8">
           <div className="space-y-2">
-            <ExpanderList title="OBR Registradas" icon="🟢" items={l.obr} studentName={student.nome} disabledList={disabledList} onToggle={toggleSubject} />
-            <ExpanderList title="OL Registradas" icon="🔵" items={l.ol} studentName={student.nome} disabledList={disabledList} onToggle={toggleSubject} />
-            <ExpanderList title="LIV Registradas" icon="🟡" items={l.liv} studentName={student.nome} disabledList={disabledList} onToggle={toggleSubject} />
+            <ExpanderList title="OBR Registradas" icon="🟢" items={l.obr} studentName={student.nome} toggledList={disabledList} onToggle={toggleSubject} />
+            <ExpanderList title="OL Registradas" icon="🔵" items={l.ol} studentName={student.nome} toggledList={disabledList} onToggle={toggleSubject} />
+            <ExpanderList title="LIV Registradas" icon="🟡" items={l.liv} studentName={student.nome} toggledList={disabledList} onToggle={toggleSubject} allowDisableApr={true} />
             {l.n_rec.length > 0 && (
               <ExpanderList 
                 title="Não Reconhecidas" 
@@ -271,14 +278,14 @@ export default function App() {
                 items={l.n_rec} 
                 fallbackText="Todas mapeadas com sucesso." 
                 studentName={student.nome} 
-                disabledList={disabledList} 
+                toggledList={disabledList} 
                 onToggle={toggleSubject} 
                 hideCheckbox={true} 
               />
             )}
           </div>
           <div className="space-y-2 mt-4 lg:mt-0">
-            <ExpanderList title="OBR Faltantes" icon="🔴" items={l.faltam_obr} fallbackText="Todas as OBR concluídas! 🎉" disabledList={disabledList} hideCheckbox={true} />
+            <ExpanderList title="OBR Faltantes" icon="🔴" items={l.faltam_obr} fallbackText="Todas as OBR concluídas! 🎉" studentName={student.nome} toggledList={enabledMissingList} onToggle={toggleMissingSubject} startsChecked={false} />
             
             {missingOL > 0 && (
               <details className="bg-white/[0.02] rounded-xl border border-white/[0.05] mb-3 group transition-colors hover:bg-white/[0.04]">
@@ -341,7 +348,6 @@ export default function App() {
             {studentsInput.map((s, idx) => (
               <div key={s.id} className="relative bg-black/30 p-6 rounded-2xl border border-white/5 backdrop-blur-sm transition-transform hover:-translate-y-1 duration-300">
                 
-                {/* Botão de Remover Competidor */}
                 {studentsInput.length > 1 && (
                   <button 
                     onClick={() => removeCompetitor(s.id)}
@@ -453,8 +459,7 @@ export default function App() {
                         {apiData.students.map(s => (
                           <td key={s.nome} className="p-4 min-w-[140px]">
                             <div className="flex items-center gap-3">
-                              {/* As classes "hidden md:block" foram removidas abaixo */}
-                              <div className="w-full bg-black/50 h-2 rounded-full overflow-hidden border border-white/5">
+                              <div className="w-full bg-black/50 h-2 rounded-full overflow-hidden hidden md:block border border-white/5">
                                 <div className="bg-gradient-to-r from-indigo-500 to-pink-500 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${r[s.nome]}%` }}></div>
                               </div>
                               <span className="text-sm font-mono text-gray-300 w-12 text-right">{r[s.nome].toFixed(1)}%</span>
@@ -503,13 +508,11 @@ export default function App() {
             </div>
           </div>
         )}
-        {/* --- INSERIR DAQUI --- */}
         <footer className="mt-24 text-center animate-fade-in-up">
           <p className="text-gray-500 text-xl font-medium">
             Feito por <a href="https://github.com/henriquefelisardo" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-pink-400 hover:underline transition-colors duration-300">@henryfelisardo</a>
           </p>
         </footer>
-        {/* --- ATÉ AQUI --- */}
       </div>
     </div>
   );
