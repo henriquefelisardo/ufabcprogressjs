@@ -297,7 +297,6 @@ async def simular_cenarios(request: Request):
         ra = ext["ra"]
         curso_base = ext["curso_base"]
         
-        # Extrai os dígitos 3 a 6 do RA para formar o ano
         ano = 9999
         if ra and len(ra) >= 6 and ra[2:6].isdigit():
             ano = int(ra[2:6])
@@ -337,7 +336,6 @@ async def simular_cenarios(request: Request):
         
         novas_disciplinas = extrair_texto_matricula(ext["matricula"], dicionario_ch_global, catalogo_csv_ch, status_padrao='NOVA_MATR')
         
-        # Junta todas as listas com a projeção final
         hist_novo = hist_proj + disciplinas_iniciais + [(m, c, s) for m, c, s in novas_disciplinas]
         
         cursos_resultados = {}
@@ -353,9 +351,16 @@ async def simular_cenarios(request: Request):
                     elif mat in dados["grade"]["OBR"]: obr.append(item)
                     elif mat in dados["grade"]["OL"]: ol.append(item)
                     else: liv.append(item)
+                
+                # ADIÇÃO: Transforma a lista de faltas em objetos com carga horária
+                faltam_obr_list = []
+                for mat in sorted(list(dados["grade"]["OBR"] - vistos)):
+                    ch_falta = catalogo_csv_ch.get(mat, dicionario_ch_global.get(mat, 0))
+                    faltam_obr_list.append({"nome": mat, "ch": ch_falta, "status": "FALTA"})
+                    
                 return {
                     "obr": obr, "ol": ol, "liv": liv, "n_rec": n_rec, 
-                    "faltam_obr": sorted(list(dados["grade"]["OBR"] - vistos))
+                    "faltam_obr": faltam_obr_list
                 }
 
             cursos_resultados[curso] = {
@@ -366,7 +371,6 @@ async def simular_cenarios(request: Request):
         students_data.append({"nome": ext["nome"], "cursos": cursos_resultados})
         
     return {"status": "success", "students": students_data, "cursos_disponiveis": list(cursos_bd.keys())}
-
 
 # Monta a pasta 'dist' do React para ser servida pelo FastAPI
 dist_path = os.path.join(os.path.dirname(__file__), "dist")
