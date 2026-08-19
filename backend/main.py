@@ -102,7 +102,7 @@ def limpar_nome_disciplina(texto):
     texto = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8')
     return texto.strip()
 
-def buscar_disciplinas_ra(ra_alvo, caminho_csv="DADOS_2021-20262.csv"):
+def buscar_disciplinas_ra(ra_alvo, caminho_csv="DADOS_UNIFICADOS_ORDENADOS.csv"):#(ra_alvo, caminho_csv="DADOS_2021-20262.csv"):
     if not ra_alvo or not Path(caminho_csv).exists():
         return []
     encontradas = []
