@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 
-const ExpanderList = ({ title, icon, items, fallbackText, studentName, disabledList = [], onToggle }) => {
+// Componente: Lista Sanfona (Expansível) Modernizada
+const ExpanderList = ({ title, icon, items, fallbackText, studentName, disabledList = [], onToggle, hideCheckbox = false }) => {
   return (
     <details className="bg-white/[0.02] rounded-xl border border-white/[0.05] mb-3 group overflow-hidden transition-all duration-300 hover:bg-white/[0.04]">
       <summary className="p-4 cursor-pointer select-none font-medium flex items-center transition-colors outline-none text-gray-200">
@@ -17,7 +18,8 @@ const ExpanderList = ({ title, icon, items, fallbackText, studentName, disabledL
               const ch = isObj ? item.ch : null;
               const status = isObj ? item.status : null;
               
-              const canDisable = status && status !== 'APR';
+              // Nova regra: se hideCheckbox for true, o checkbox nunca é renderizado
+              const canDisable = status && status !== 'APR' && !hideCheckbox;
               const isDisabled = disabledList.includes(name);
 
               return (
@@ -50,7 +52,7 @@ const ExpanderList = ({ title, icon, items, fallbackText, studentName, disabledL
 };
 
 export default function App() {
-  const [studentsInput, setStudentsInput] = useState([{ id: 0, nome: 'Aluno 1', file: null, matricula: '' }]);
+  const [studentsInput, setStudentsInput] = useState([{ id: 0, nome: 'Aluno 1', file: null, matricula: '', ra: '', curso_base: 'BCT' }]);
   const [isArena, setIsArena] = useState(false);
   const [loading, setLoading] = useState(false);
   const [apiData, setApiData] = useState(null);
@@ -69,7 +71,7 @@ export default function App() {
   };
 
   const addCompetitor = () => {
-    setStudentsInput([...studentsInput, { id: Date.now(), nome: `Competidor ${studentsInput.length + 1}`, file: null, matricula: '' }]);
+    setStudentsInput([...studentsInput, { id: Date.now(), nome: `Competidor ${studentsInput.length + 1}`, file: null, matricula: '', ra: '', curso_base: 'BCT' }]);
   };
 
   const toggleSubject = (studentName, subjectName) => {
@@ -116,11 +118,13 @@ export default function App() {
 
   const handleSimulate = async () => {
     setLoading(true);
-    setDisabledSubjects({}); // Reseta o estado local ao simular novamente
+    setDisabledSubjects({});
     const formData = new FormData();
     
     studentsInput.forEach((s, idx) => {
       formData.append(`nome_${idx}`, s.nome);
+      formData.append(`ra_${idx}`, s.ra || '');
+      formData.append(`curso_base_${idx}`, s.curso_base); // <--- Adicione esta linha
       formData.append(`matricula_${idx}`, s.matricula);
       if (s.file) formData.append(`file_${idx}`, s.file);
     });
@@ -246,7 +250,16 @@ export default function App() {
             <ExpanderList title="OL Registradas" icon="🔵" items={l.ol} studentName={student.nome} disabledList={disabledList} onToggle={toggleSubject} />
             <ExpanderList title="LIV Registradas" icon="🟡" items={l.liv} studentName={student.nome} disabledList={disabledList} onToggle={toggleSubject} />
             {l.n_rec.length > 0 && (
-              <ExpanderList title="Não Reconhecidas" icon="⚠️" items={l.n_rec} fallbackText="Todas mapeadas com sucesso." studentName={student.nome} disabledList={disabledList} onToggle={toggleSubject} />
+              <ExpanderList 
+                title="Não Reconhecidas" 
+                icon="⚠️" 
+                items={l.n_rec} 
+                fallbackText="Todas mapeadas com sucesso." 
+                studentName={student.nome} 
+                disabledList={disabledList} 
+                onToggle={toggleSubject} 
+                hideCheckbox={true} 
+              />
             )}
           </div>
           <div className="space-y-2 mt-4 lg:mt-0">
@@ -312,6 +325,7 @@ export default function App() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {studentsInput.map((s, idx) => (
               <div key={s.id} className="bg-black/30 p-6 rounded-2xl border border-white/5 backdrop-blur-sm transition-transform hover:-translate-y-1 duration-300">
+                
                 {isArena && (
                   <input 
                     className="w-full bg-transparent border-b border-gray-600 focus:border-indigo-500 p-2 text-xl font-bold mb-5 outline-none transition-colors text-indigo-100 placeholder-gray-600" 
@@ -320,13 +334,44 @@ export default function App() {
                     placeholder="Nome do Competidor"
                   />
                 )}
-                <label className="block text-sm font-medium text-gray-400 mb-2">📄 Histórico em PDF (Opcional)</label>
+                
+              <label className="block text-sm font-medium text-gray-400 mb-2">🏫 Grade de Ingresso</label>
+                <div className="flex gap-4 mb-6">
+                  <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-300">
+                    <input 
+                      type="radio" name={`base_${s.id}`} value="BCT" 
+                      checked={s.curso_base === 'BCT'} 
+                      onChange={e => updateStudent(idx, 'curso_base', e.target.value)} 
+                      className="accent-indigo-500 w-4 h-4 cursor-pointer" 
+                    /> BCT
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-300">
+                    <input 
+                      type="radio" name={`base_${s.id}`} value="BCH" 
+                      checked={s.curso_base === 'BCH'} 
+                      onChange={e => updateStudent(idx, 'curso_base', e.target.value)} 
+                      className="accent-indigo-500 w-4 h-4 cursor-pointer" 
+                    /> BCH
+                  </label>
+                </div>
+
+                <label className="block text-sm font-medium text-gray-400 mb-2">🎓 RA (Busca Automática) (opcional)</label>
+                <input 
+                  type="text"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm outline-none focus:border-indigo-500 transition-all mb-4 text-white placeholder-gray-600"
+                  placeholder="Ex: 11202230067"
+                  value={s.ra || ''}
+                  onChange={e => updateStudent(idx, 'ra', e.target.value)}
+                />
+
+                <label className="block text-sm font-medium text-gray-400 mb-2">📄 Ou/e Histórico em PDF (Um pouquinho mais preciso)</label>
                 <input 
                   type="file" accept=".pdf" 
                   onChange={e => updateStudent(idx, 'file', e.target.files[0])} 
                   className="w-full text-sm text-gray-500 mb-6 file:mr-4 file:py-2.5 file:px-5 file:rounded-xl file:border-0 file:bg-white/10 file:text-white file:font-semibold file:cursor-pointer hover:file:bg-white/20 transition-all"
                 />
-                <label className="block text-sm font-medium text-gray-400 mb-2">📝 Planejamento Futuro (opcional)</label>
+                
+                <label className="block text-sm font-medium text-gray-400 mb-2">📝 Ou/e Planejamento Futuro</label>
                 <textarea 
                   className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all h-28 resize-none placeholder-gray-600"
                   placeholder="Nomes soltos ou log de matricula..."
