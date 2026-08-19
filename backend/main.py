@@ -109,19 +109,36 @@ def extrair_texto_matricula(texto, dicionario_ch, catalogo_csv_ch):
             disciplinas.append((padronizar_nome(match.group(1).strip()), ch, 'NOVA_MATR'))
         else:
             nome_limpo = padronizar_nome(linha)
-            if nome_limpo:
-                encontrado = False
-                for mat_pdf, ch_pdf in dicionario_ch.items():
-                    if nome_limpo == mat_pdf or nome_limpo in mat_pdf or mat_pdf in nome_limpo:
-                        disciplinas.append((mat_pdf, ch_pdf, 'NOVA_MATR'))
-                        encontrado = True; break
-                if not encontrado:
-                    for mat_csv, ch_csv in catalogo_csv_ch.items():
-                        if nome_limpo == mat_csv or nome_limpo in mat_csv or mat_csv in nome_limpo:
-                            disciplinas.append((mat_csv, ch_csv, 'NOVA_MATR'))
-                            encontrado = True; break
-                if not encontrado:
-                    disciplinas.append((nome_limpo, 0, 'NOVA_MATR'))
+            if not nome_limpo: continue
+
+            # 1. Match Exato O(1): Evita colisões de substrings (I vs II, III, etc)
+            if nome_limpo in dicionario_ch:
+                disciplinas.append((nome_limpo, dicionario_ch[nome_limpo], 'NOVA_MATR'))
+                continue
+            if nome_limpo in catalogo_csv_ch:
+                disciplinas.append((nome_limpo, catalogo_csv_ch[nome_limpo], 'NOVA_MATR'))
+                continue
+
+            # 2. Match Parcial O(n): Fallback caso o SIGAA quebre a linha ou o nome
+            encontrado = False
+            for mat_pdf, ch_pdf in dicionario_ch.items():
+                if nome_limpo in mat_pdf or mat_pdf in nome_limpo:
+                    if mat_pdf.endswith(" I") and nome_limpo.endswith(" II"): continue # Blindagem extra
+                    disciplinas.append((mat_pdf, ch_pdf, 'NOVA_MATR'))
+                    encontrado = True
+                    break
+            
+            if not encontrado:
+                for mat_csv, ch_csv in catalogo_csv_ch.items():
+                    if nome_limpo in mat_csv or mat_csv in nome_limpo:
+                        if mat_csv.endswith(" I") and nome_limpo.endswith(" II"): continue # Blindagem extra
+                        disciplinas.append((mat_csv, ch_csv, 'NOVA_MATR'))
+                        encontrado = True
+                        break
+                        
+            if not encontrado:
+                disciplinas.append((nome_limpo, 0, 'NOVA_MATR'))
+
     return disciplinas
 
 def carregar_banco_metas(caminho_csv="BASE_CURSOS.csv"):
