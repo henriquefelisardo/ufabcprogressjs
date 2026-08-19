@@ -102,22 +102,91 @@ def limpar_nome_disciplina(texto):
     texto = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8')
     return texto.strip()
 
-def buscar_disciplinas_ra(ra_alvo, caminho_csv="DADOS_UNIFICADOS_ORDENADOS.csv"):#(ra_alvo, caminho_csv="DADOS_2021-20262.csv"):
+def buscar_disciplinas_ra(ra_alvo, caminho_csv="DADOS_UNIFICADOS_ORDENADOS.csv"):
     if not ra_alvo or not Path(caminho_csv).exists():
         return []
-    encontradas = []
-    try:
-        with open(caminho_csv, mode='r', encoding='utf-8') as arquivo:
-            for linha in arquivo:
-                if not linha.strip(): continue
-                colunas = linha.strip().split(';')
-                # Se o CSV for separado por vírgula, troque para split(',')
-                if len(colunas) >= 3 and colunas[0] == ra_alvo:
-                    encontradas.append(limpar_nome_disciplina(colunas[2]))
-    except Exception as e:
-        print(f"Erro ao ler CSV de RA: {e}")
         
-    return list(dict.fromkeys(encontradas)) # Remove duplicatas preservando ordem
+    encontradas = []
+    ra_alvo = str(ra_alvo).strip()
+    
+    try:
+        tamanho_arquivo = os.path.getsize(caminho_csv)
+        # Lemos em modo binário ('rb') para poder saltar pelos bytes do disco com seek()
+        with open(caminho_csv, mode='rb') as arquivo:
+            esq = 0
+            dir = tamanho_arquivo
+            posicao_match = -1
+            
+            # 1. Busca Binária no Disco O(log N)
+            while esq <= dir:
+                meio = (esq + dir) // 2
+                arquivo.seek(meio)
+                
+                # Se não caímos exatamente no byte 0, descartamos a primeira leitura 
+                # porque o ponteiro provavelmente caiu no meio de uma linha cortada.
+                if meio > 0:
+                    arquivo.readline() 
+                
+                pos_atual = arquivo.tell()
+                linha_bytes = arquivo.readline()
+                
+                if not linha_bytes: # Fim do arquivo
+                    dir = meio - 1
+                    continue
+                    
+                linha = linha_bytes.decode('utf-8', errors='ignore').strip()
+                colunas = linha.split(';')
+                
+                if len(colunas) < 3:
+                    esq = meio + 1
+                    continue
+                    
+                ra_mid = colunas[0].strip()
+                
+                if ra_mid == ra_alvo:
+                    posicao_match = pos_atual
+                    break
+                elif ra_mid < ra_alvo:
+                    esq = meio + 1
+                else:
+                    dir = meio - 1
+                    
+            # 2. Coleta Contígua (Backtracking)
+            if posicao_match != -1:
+                # Encontramos um hit do RA! Como o aluno tem dezenas de matérias, 
+                # a busca binária pode ter caído no meio do histórico dele.
+                # Voltamos 25KB no disco (~250 linhas, o que cobre com folga qualquer histórico da UFABC) 
+                # para garantir que vamos começar a ler antes da primeira matéria dele.
+                bloco_recuo = max(0, posicao_match - 25000)
+                arquivo.seek(bloco_recuo)
+                if bloco_recuo > 0:
+                    arquivo.readline() 
+                    
+                # Agora lemos linha por linha para frente
+                while True:
+                    linha_bytes = arquivo.readline()
+                    if not linha_bytes:
+                        break
+                        
+                    linha = linha_bytes.decode('utf-8', errors='ignore').strip()
+                    if not linha:
+                        continue
+                        
+                    colunas = linha.split(';')
+                    if len(colunas) >= 3:
+                        ra_atual = colunas[0].strip()
+                        
+                        if ra_atual == ra_alvo:
+                            encontradas.append(limpar_nome_disciplina(colunas[2]))
+                        elif encontradas:
+                            # Como o CSV está estritamente ordenado, se a nossa lista de 'encontradas' 
+                            # já tem itens e o RA atual mudou, significa que o bloco desse aluno acabou.
+                            break
+
+    except Exception as e:
+        print(f"Erro na Busca Binária do RA: {e}")
+        
+    return list(dict.fromkeys(encontradas))
 
 # --- 2. FUNÇÃO DE EXTRAÇÃO DE TEXTO ATUALIZADA (O(1) Match e Status Dinâmico) ---
 def extrair_texto_matricula(texto, dicionario_ch, catalogo_csv_ch, status_padrao='NOVA_MATR'):
