@@ -145,8 +145,8 @@ export default function App() {
     });
 
     try {
-      const response = await fetch('https://ufabcprogressjs.onrender.com/api/simular', { method: 'POST', body: formData });
-      //const response = await fetch('http://localhost:8000/api/simular', { method: 'POST', body: formData });
+      //const response = await fetch('https://ufabcprogressjs.onrender.com/api/simular', { method: 'POST', body: formData });
+      const response = await fetch('http://localhost:8000/api/simular', { method: 'POST', body: formData });
       //const response = await fetch('/api/simular', { method: 'POST', body: formData });
 
       if (!response.ok) {
@@ -441,7 +441,7 @@ export default function App() {
                   <thead>
                     <tr className="bg-white/5 text-gray-400 text-sm tracking-wider uppercase">
                       <th className="p-4 font-medium">Curso</th>
-                      {!isArena && <th className="p-4 font-medium w-12">Horas</th>}
+                      {!isArena && <th className="p-4 font-medium w-32">Horas</th>}
                       {apiData.students.map(s => <th key={s.nome} className="p-4 font-medium w-64">{s.nome}</th>)}
                     </tr>
                   </thead>
@@ -451,9 +451,10 @@ export default function App() {
                         <td className="p-4 text-sm font-medium text-gray-200">{r.curso}</td>
                         {!isArena && <td className="p-4 text-sm text-gray-500">{r.chAproveitada}</td>}
                         {apiData.students.map(s => (
-                          <td key={s.nome} className="p-4">
+                          <td key={s.nome} className="p-4 min-w-[140px]">
                             <div className="flex items-center gap-3">
-                              <div className="w-full bg-black/50 h-2 rounded-full overflow-hidden hidden md:block border border-white/5">
+                              {/* As classes "hidden md:block" foram removidas abaixo */}
+                              <div className="w-full bg-black/50 h-2 rounded-full overflow-hidden border border-white/5">
                                 <div className="bg-gradient-to-r from-indigo-500 to-pink-500 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${r[s.nome]}%` }}></div>
                               </div>
                               <span className="text-sm font-mono text-gray-300 w-12 text-right">{r[s.nome].toFixed(1)}%</span>
