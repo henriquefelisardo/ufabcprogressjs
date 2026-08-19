@@ -1,7 +1,15 @@
 import React, { useState, useMemo } from 'react';
 
-// Componente: Lista Sanfona (Expansível) Modernizada
+// Componente: Lista Sanfona (Expansível) Modernizada e Alfabética
 const ExpanderList = ({ title, icon, items, fallbackText, studentName, disabledList = [], onToggle, hideCheckbox = false }) => {
+  
+  // Ordenação Alfabética da Lista
+  const sortedItems = [...items].sort((a, b) => {
+    const nameA = typeof a === 'object' ? a.nome : a;
+    const nameB = typeof b === 'object' ? b.nome : b;
+    return nameA.localeCompare(nameB);
+  });
+
   return (
     <details className="bg-white/[0.02] rounded-xl border border-white/[0.05] mb-3 group overflow-hidden transition-all duration-300 hover:bg-white/[0.04]">
       <summary className="p-4 cursor-pointer select-none font-medium flex items-center transition-colors outline-none text-gray-200">
@@ -10,9 +18,9 @@ const ExpanderList = ({ title, icon, items, fallbackText, studentName, disabledL
         <span className="ml-auto opacity-50 group-open:rotate-180 transition-transform duration-300">▼</span>
       </summary>
       <div className="p-4 pt-0 text-sm text-gray-400 max-h-60 overflow-y-auto">
-        {items.length > 0 ? (
+        {sortedItems.length > 0 ? (
           <ul className="space-y-2">
-            {items.map((item, i) => {
+            {sortedItems.map((item, i) => {
               const isObj = typeof item === 'object';
               const name = isObj ? item.nome : item;
               const ch = isObj ? item.ch : null;
@@ -74,6 +82,13 @@ export default function App() {
     setStudentsInput([...studentsInput, { id: Date.now(), nome: `Competidor ${studentsInput.length + 1}`, file: null, matricula: '', ra: '', curso_base: 'BCT' }]);
   };
 
+  // Função para remover um competidor
+  const removeCompetitor = (idToRemove) => {
+    if (studentsInput.length > 1) {
+      setStudentsInput(studentsInput.filter(s => s.id !== idToRemove));
+    }
+  };
+
   const toggleSubject = (studentName, subjectName) => {
     setDisabledSubjects(prev => {
       const currentDisabled = prev[studentName] || [];
@@ -124,7 +139,7 @@ export default function App() {
     studentsInput.forEach((s, idx) => {
       formData.append(`nome_${idx}`, s.nome);
       formData.append(`ra_${idx}`, s.ra || '');
-      formData.append(`curso_base_${idx}`, s.curso_base); // <--- Adicione esta linha
+      formData.append(`curso_base_${idx}`, s.curso_base); 
       formData.append(`matricula_${idx}`, s.matricula);
       if (s.file) formData.append(`file_${idx}`, s.file);
     });
@@ -263,7 +278,7 @@ export default function App() {
             )}
           </div>
           <div className="space-y-2 mt-4 lg:mt-0">
-            <ExpanderList title="OBR Faltantes" icon="🔴" items={l.faltam_obr} fallbackText="Todas as OBR concluídas! 🎉" disabledList={disabledList} />
+            <ExpanderList title="OBR Faltantes" icon="🔴" items={l.faltam_obr} fallbackText="Todas as OBR concluídas! 🎉" disabledList={disabledList} hideCheckbox={true} />
             
             {missingOL > 0 && (
               <details className="bg-white/[0.02] rounded-xl border border-white/[0.05] mb-3 group transition-colors hover:bg-white/[0.04]">
@@ -324,18 +339,29 @@ export default function App() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {studentsInput.map((s, idx) => (
-              <div key={s.id} className="bg-black/30 p-6 rounded-2xl border border-white/5 backdrop-blur-sm transition-transform hover:-translate-y-1 duration-300">
+              <div key={s.id} className="relative bg-black/30 p-6 rounded-2xl border border-white/5 backdrop-blur-sm transition-transform hover:-translate-y-1 duration-300">
                 
+                {/* Botão de Remover Competidor */}
+                {studentsInput.length > 1 && (
+                  <button 
+                    onClick={() => removeCompetitor(s.id)}
+                    className="absolute top-4 right-4 text-gray-500 hover:text-red-400 transition-colors bg-white/5 hover:bg-red-500/20 p-2 rounded-lg z-10"
+                    title="Remover competidor"
+                  >
+                    🗑️
+                  </button>
+                )}
+
                 {isArena && (
                   <input 
-                    className="w-full bg-transparent border-b border-gray-600 focus:border-indigo-500 p-2 text-xl font-bold mb-5 outline-none transition-colors text-indigo-100 placeholder-gray-600" 
+                    className="w-full bg-transparent border-b border-gray-600 focus:border-indigo-500 p-2 text-xl font-bold mb-5 outline-none transition-colors text-indigo-100 placeholder-gray-600 pr-10" 
                     value={s.nome} 
                     onChange={e => updateStudent(idx, 'nome', e.target.value)} 
                     placeholder="Nome do Competidor"
                   />
                 )}
                 
-              <label className="block text-sm font-medium text-gray-400 mb-2">🏫 Grade de Ingresso</label>
+                <label className="block text-sm font-medium text-gray-400 mb-2">🏫 Grade de Ingresso</label>
                 <div className="flex gap-4 mb-6">
                   <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-300">
                     <input 
@@ -364,7 +390,7 @@ export default function App() {
                   onChange={e => updateStudent(idx, 'ra', e.target.value)}
                 />
 
-                <label className="block text-sm font-medium text-gray-400 mb-2">📄 Ou/e Histórico em PDF (Um pouquinho mais preciso)</label>
+                <label className="block text-sm font-medium text-gray-400 mb-2">📄 Ou/e Histórico em PDF</label>
                 <input 
                   type="file" accept=".pdf" 
                   onChange={e => updateStudent(idx, 'file', e.target.files[0])} 
