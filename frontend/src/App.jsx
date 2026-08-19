@@ -502,6 +502,13 @@ export default function App() {
             </div>
           </div>
         )}
+        {/* --- INSERIR DAQUI --- */}
+        <footer className="mt-24 text-center animate-fade-in-up">
+          <p className="text-gray-500 text-xl font-medium">
+            Feito por <a href="https://github.com/henriquefelisardo" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-pink-400 hover:underline transition-colors duration-300">@henryfelisardo</a>
+          </p>
+        </footer>
+        {/* --- ATÉ AQUI --- */}
       </div>
     </div>
   );
