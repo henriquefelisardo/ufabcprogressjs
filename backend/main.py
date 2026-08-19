@@ -314,7 +314,7 @@ async def simular_cenarios(request: Request):
                 materias_iniciais = [
                     "BASE EXPERIMENTAL DAS CIENCIAS NATURAIS", "ESTRUTURA DA MATERIA",
                     "EVOLUCAO E DIVERSIFICACAO DA VIDA NA TERRA", "BASES COMPUTACIONAIS DA CIENCIA",
-                    "BASES MATEMATICAS", "BASES CONCEITUAIS DE ENERGIA"
+                    "BASES MATEMATICAS", "BASES CONCEITUAIS DA ENERGIA"
                 ]
             else:
                 materias_iniciais = [
