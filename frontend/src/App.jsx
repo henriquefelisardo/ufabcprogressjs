@@ -152,8 +152,8 @@ export default function App() {
     });
 
     try {
-      const response = await fetch('https://ufabcprogressjs.onrender.com/api/simular', { method: 'POST', body: formData });
-      //const response = await fetch('http://localhost:8000/api/simular', { method: 'POST', body: formData });
+      //const response = await fetch('https://ufabcprogressjs.onrender.com/api/simular', { method: 'POST', body: formData });
+      const response = await fetch('http://localhost:8000/api/simular', { method: 'POST', body: formData });
 
       if (!response.ok) {
         const errorText = await response.text();
