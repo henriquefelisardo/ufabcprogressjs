@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 
 // Componente: Lista Sanfona (Expansível) Modernizada e Alfabética
 const ExpanderList = ({ title, icon, items, fallbackText, studentName, toggledList = [], onToggle, hideCheckbox = false, startsChecked = true, allowDisableApr = false }) => {
@@ -514,6 +515,7 @@ export default function App() {
           </p>
         </footer>
       </div>
+      <Analytics />
     </div>
   );
 }
