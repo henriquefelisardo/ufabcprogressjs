@@ -19,6 +19,10 @@ O app usa uma arquitetura moderna e desacoplada:
 * **Frontend:** React + Vite + Tailwind CSS (interface baseada em Glassmorphism, aurora gradients e UI reativa).
 * **Backend:** Python + FastAPI (usando `pdfplumber` para raspar os PDFs e processar o motor de cálculo das planilhas em milissegundos).
 
+## Acesso ao site
+
+https://ufabcprogress.vercel.app/
+
 ## 💻 Como rodar localmente
 
 Você vai precisar do Node.js e do Python instalados na sua máquina. O projeto exige que o backend e o frontend rodem simultaneamente em terminais separados.
