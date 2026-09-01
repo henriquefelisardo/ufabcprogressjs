@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react';
 
+//npm run dev
+
 // Componente: Lista Sanfona (Expansível) Modernizada e Alfabética
 const ExpanderList = ({ title, icon, items, fallbackText, studentName, toggledList = [], onToggle, hideCheckbox = false, startsChecked = true, allowDisableApr = false }) => {
   
