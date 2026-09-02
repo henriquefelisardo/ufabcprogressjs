@@ -1,3 +1,6 @@
+
+#uvicorn main:app --reload
+
 from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 import pdfplumber
@@ -11,8 +14,6 @@ from pathlib import Path
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
-
-#uvicorn main:app --reload
 
 app = FastAPI(title="UFABC Dashboard API")
 
@@ -95,13 +96,13 @@ def extrair_componentes_pdf(bytes_arquivo):
                         linhas_brutas.append(normalizada)
     return linhas_brutas
 
-# --- 1. FUNÇÕES DO SEU SCRIPT DE RA (ADAPTADAS) ---
 def limpar_nome_disciplina(texto):
     texto = re.sub(r'\s+[A-Za-z0-9]+-(Diurno|Noturno|Matutino|Vespertino)\s+\(.*?\)[\s]*.*$', '', texto, flags=re.IGNORECASE)
     texto = texto.upper()
     texto = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8')
     return texto.strip()
 
+# --- MOTOR ÚNICO DE BUSCA BINÁRIA O(log N) ---
 def buscar_disciplinas_ra(ra_alvo, caminho_csv="DADOS_UNIFICADOS_ORDENADOS.csv"):
     if not ra_alvo or not Path(caminho_csv).exists():
         return []
@@ -111,26 +112,21 @@ def buscar_disciplinas_ra(ra_alvo, caminho_csv="DADOS_UNIFICADOS_ORDENADOS.csv")
     
     try:
         tamanho_arquivo = os.path.getsize(caminho_csv)
-        # Lemos em modo binário ('rb') para poder saltar pelos bytes do disco com seek()
         with open(caminho_csv, mode='rb') as arquivo:
             esq = 0
             dir = tamanho_arquivo
             posicao_match = -1
             
-            # 1. Busca Binária no Disco O(log N)
             while esq <= dir:
                 meio = (esq + dir) // 2
                 arquivo.seek(meio)
-                
-                # Se não caímos exatamente no byte 0, descartamos a primeira leitura 
-                # porque o ponteiro provavelmente caiu no meio de uma linha cortada.
                 if meio > 0:
                     arquivo.readline() 
                 
                 pos_atual = arquivo.tell()
                 linha_bytes = arquivo.readline()
                 
-                if not linha_bytes: # Fim do arquivo
+                if not linha_bytes: 
                     dir = meio - 1
                     continue
                     
@@ -151,44 +147,31 @@ def buscar_disciplinas_ra(ra_alvo, caminho_csv="DADOS_UNIFICADOS_ORDENADOS.csv")
                 else:
                     dir = meio - 1
                     
-            # 2. Coleta Contígua (Backtracking)
             if posicao_match != -1:
-                # Encontramos um hit do RA! Como o aluno tem dezenas de matérias, 
-                # a busca binária pode ter caído no meio do histórico dele.
-                # Voltamos 25KB no disco (~250 linhas, o que cobre com folga qualquer histórico da UFABC) 
-                # para garantir que vamos começar a ler antes da primeira matéria dele.
                 bloco_recuo = max(0, posicao_match - 25000)
                 arquivo.seek(bloco_recuo)
                 if bloco_recuo > 0:
                     arquivo.readline() 
                     
-                # Agora lemos linha por linha para frente
                 while True:
                     linha_bytes = arquivo.readline()
-                    if not linha_bytes:
-                        break
+                    if not linha_bytes: break
                         
                     linha = linha_bytes.decode('utf-8', errors='ignore').strip()
-                    if not linha:
-                        continue
+                    if not linha: continue
                         
                     colunas = linha.split(';')
                     if len(colunas) >= 3:
                         ra_atual = colunas[0].strip()
-                        
                         if ra_atual == ra_alvo:
                             encontradas.append(limpar_nome_disciplina(colunas[2]))
                         elif encontradas:
-                            # Como o CSV está estritamente ordenado, se a nossa lista de 'encontradas' 
-                            # já tem itens e o RA atual mudou, significa que o bloco desse aluno acabou.
                             break
-
     except Exception as e:
-        print(f"Erro na Busca Binária do RA: {e}")
+        print(f"Erro na Busca Binária do RA em {caminho_csv}: {e}")
         
     return list(dict.fromkeys(encontradas))
 
-# --- 2. FUNÇÃO DE EXTRAÇÃO DE TEXTO ATUALIZADA (O(1) Match e Status Dinâmico) ---
 def extrair_texto_matricula(texto, dicionario_ch, catalogo_csv_ch, status_padrao='NOVA_MATR'):
     disciplinas = []
     if not texto.strip(): return disciplinas
@@ -205,7 +188,6 @@ def extrair_texto_matricula(texto, dicionario_ch, catalogo_csv_ch, status_padrao
             nome_limpo = padronizar_nome(linha)
             if not nome_limpo: continue
 
-            # Match Exato O(1): Blindagem contra Algoritmos I vs Algoritmos II
             if nome_limpo in dicionario_ch:
                 disciplinas.append((nome_limpo, dicionario_ch[nome_limpo], status_padrao))
                 continue
@@ -213,7 +195,6 @@ def extrair_texto_matricula(texto, dicionario_ch, catalogo_csv_ch, status_padrao
                 disciplinas.append((nome_limpo, catalogo_csv_ch[nome_limpo], status_padrao))
                 continue
 
-            # Match Parcial O(n)
             encontrado = False
             for mat_pdf, ch_pdf in dicionario_ch.items():
                 if nome_limpo in mat_pdf or mat_pdf in nome_limpo:
@@ -298,7 +279,7 @@ cursos_bd, catalogo_csv_ch = carregar_banco_metas()
 
 def _calcular_cenario(hist_filtrado, dados_curso):
     real_obr = real_ol = real_liv = 0
-    vistos = set() # BLINDAGEM: Garante que a injeção da grade base não duplique carga de quem já fez
+    vistos = set() 
     for mat, ch, s in hist_filtrado:
         if mat in vistos: continue
         vistos.add(mat)
@@ -336,12 +317,11 @@ async def simular_cenarios(request: Request):
     
     idx_comp, idx_ch, idx_sit = COLUNAS.index("componente_curricular"), COLUNAS.index("ch"), COLUNAS.index("situacao")
     
-    # Passagem 1: Extrai PDFs e Variáveis
     for idx in student_indices:
         nome = form.get(f"nome_{idx}", f"Competidor {int(idx)+1}")
         matricula = form.get(f"matricula_{idx}", "")
         ra = form.get(f"ra_{idx}", "")
-        curso_base = form.get(f"curso_base_{idx}", "BCT") # Captura BCT/BCH
+        curso_base = form.get(f"curso_base_{idx}", "BCT") 
         file = form.get(f"file_{idx}")
         
         historico_limpo = []
@@ -360,7 +340,6 @@ async def simular_cenarios(request: Request):
             "nome": nome, "matricula": matricula, "ra": ra, "curso_base": curso_base, "historico_limpo": historico_limpo
         })
     
-    # Passagem 2: Processa Lógicas de Ano e Matrizes
     students_data = []
     for ext in students_extracted:
         ra = ext["ra"]
@@ -394,11 +373,18 @@ async def simular_cenarios(request: Request):
         texto_iniciais = "\n".join(materias_iniciais)
         disciplinas_iniciais = extrair_texto_matricula(texto_iniciais, dicionario_ch_global, catalogo_csv_ch, status_padrao='NOVA_MATR')
 
-        materias_ra = buscar_disciplinas_ra(ra)
+        # 1. Busca os matriculados atualmente no novo arquivo
+        materias_matr = buscar_disciplinas_ra(ra, caminho_csv="DADOS_MATRICULADOS__.csv")
+        texto_matr = "\n".join(materias_matr)
+        disciplinas_matr = extrair_texto_matricula(texto_matr, dicionario_ch_global, catalogo_csv_ch, status_padrao='MATR')
+
+        # 2. Busca o histórico de reprovações/anteriores
+        materias_ra = buscar_disciplinas_ra(ra, caminho_csv="DADOS_UNIFICADOS_ORDENADOS.csv")
         texto_ra = "\n".join(materias_ra)
         disciplinas_ra = extrair_texto_matricula(texto_ra, dicionario_ch_global, catalogo_csv_ch, status_padrao='NOVA_MATR')
         
-        hist_base = ext["historico_limpo"] + disciplinas_ra
+        # A injeção na base dita a hierarquia do agrupador: PDF > Matriculado > Histórico Base
+        hist_base = ext["historico_limpo"] + disciplinas_matr + disciplinas_ra
         
         hist_atual = [(m, c, s) for m, c, s in hist_base if s == 'APR']
         hist_proj = [(m, c, s) for m, c, s in hist_base if s in ['APR', 'MATR', 'NOVA_MATR']]
@@ -421,7 +407,6 @@ async def simular_cenarios(request: Request):
                     elif mat in dados["grade"]["OL"]: ol.append(item)
                     else: liv.append(item)
                 
-                # ADIÇÃO: Transforma a lista de faltas em objetos com carga horária
                 faltam_obr_list = []
                 for mat in sorted(list(dados["grade"]["OBR"] - vistos)):
                     ch_falta = catalogo_csv_ch.get(mat, dicionario_ch_global.get(mat, 0))
@@ -441,7 +426,6 @@ async def simular_cenarios(request: Request):
         
     return {"status": "success", "students": students_data, "cursos_disponiveis": list(cursos_bd.keys())}
 
-# Monta a pasta 'dist' do React para ser servida pelo FastAPI
 dist_path = os.path.join(os.path.dirname(__file__), "dist")
 
 if os.path.exists(dist_path):
@@ -449,7 +433,6 @@ if os.path.exists(dist_path):
 
     @app.get("/{catchall:path}")
     async def serve_react_app(catchall: str):
-        # Redireciona qualquer rota não-API para o index.html do React
         file_path = os.path.join(dist_path, catchall)
         if os.path.isfile(file_path):
             return FileResponse(file_path)
