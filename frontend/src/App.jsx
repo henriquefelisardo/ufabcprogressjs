@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
 
 //npm run dev
+
+import React, { useState, useMemo } from 'react';
 
 // Componente: Lista Sanfona (Expansível) Modernizada e Alfabética
 const ExpanderList = ({ title, icon, items, fallbackText, studentName, toggledList = [], onToggle, hideCheckbox = false, startsChecked = true, allowDisableApr = false }) => {
@@ -57,6 +58,65 @@ const ExpanderList = ({ title, icon, items, fallbackText, studentName, toggledLi
         )}
       </div>
     </details>
+  );
+};
+
+// Componente: Grade Horária Integrada
+const ScheduleGrid = ({ gradeData }) => {
+  const [gradeTab, setGradeTab] = useState('q1');
+  if (!gradeData || !gradeData.q1) return null;
+  
+  const grade = gradeData[gradeTab];
+  const dias = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+  const horarios = ["08:00 - 10:00", "10:00 - 12:00", "14:00 - 16:00", "16:00 - 18:00", "19:00 - 21:00", "21:00 - 23:00"];
+
+  return (
+    <div className="mt-12 animate-fade-in-up">
+      <h3 className="text-2xl font-semibold mb-6 text-white/90 tracking-tight flex items-center gap-3">
+        <span className="p-2 bg-purple-500/10 text-purple-400 rounded-lg">🗓️</span> Grade Horária
+      </h3>
+      
+      <div className="flex p-1 bg-black/40 rounded-xl border border-white/5 backdrop-blur-md w-fit mb-6">
+        <label className={`cursor-pointer px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${gradeTab === 'q1' ? 'bg-white/10 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200'}`}>
+          <input type="radio" className="hidden" checked={gradeTab === 'q1'} onChange={() => setGradeTab('q1')} /> Quinzenal I / Semanal
+        </label>
+        <label className={`cursor-pointer px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${gradeTab === 'q2' ? 'bg-white/10 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200'}`}>
+          <input type="radio" className="hidden" checked={gradeTab === 'q2'} onChange={() => setGradeTab('q2')} /> Quinzenal II / Semanal
+        </label>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-white/5 bg-black/20">
+        <table className="w-full text-left border-collapse min-w-[800px]">
+          <thead>
+            <tr className="bg-white/5 text-gray-400 text-xs tracking-wider uppercase">
+              <th className="p-4 font-medium w-28 text-center border-b border-white/5">Horário</th>
+              {dias.map(d => <th key={d} className="p-4 font-medium capitalize border-l border-b border-white/5">{d}</th>)}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5">
+            {horarios.map(h => (
+              <tr key={h} className="hover:bg-white/[0.02] transition-colors">
+                <td className="p-4 text-xs text-gray-400 font-mono whitespace-nowrap text-center bg-white/[0.01]">{h}</td>
+                {dias.map(d => (
+                  <td key={d} className="p-2 border-l border-white/5 align-top w-[16%]">
+                    {grade[h] && grade[h][d] && grade[h][d].length > 0 ? (
+                      grade[h][d].map((aula, i) => (
+                        <div key={i} className="bg-indigo-500/10 border border-indigo-500/20 rounded-md p-2 mb-2 last:mb-0 shadow-sm">
+                          <div className="text-[10px] text-indigo-300 font-mono mb-1">{aula.cod} {aula.freq && <span className="text-pink-400">{aula.freq}</span>}</div>
+                          <div className="text-xs text-white leading-tight">{aula.nome}</div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="h-full min-h-[60px]"></div>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 };
 
@@ -311,6 +371,9 @@ export default function App() {
             )}
           </div>
         </div>
+
+        {/* Integração da Grade Horária por Aluno */}
+        <ScheduleGrid gradeData={student.grade} />
       </div>
     );
   };
@@ -336,10 +399,10 @@ export default function App() {
 
         <div className="glass-panel p-8 rounded-3xl mb-12 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-            <h2 className="text-2xl font-semibold tracking-tight">Configuração de Alunos</h2>
+            <h2 className="text-2xl font-semibold tracking-tight text-white">Configuração de Alunos</h2>
             <button 
               onClick={() => { setIsArena(true); addCompetitor(); }} 
-              className="text-sm font-semibold bg-white/10 hover:bg-white/20 border border-white/10 px-5 py-2.5 rounded-full transition-all duration-300 hover:shadow-[0_0_15px_rgba(255,255,255,0.1)] backdrop-blur-md"
+              className="text-sm font-semibold bg-white/10 hover:bg-white/20 border border-white/10 px-5 py-2.5 rounded-full transition-all duration-300 hover:shadow-[0_0_15px_rgba(255,255,255,0.1)] backdrop-blur-md text-white"
             >
               ⚔️ Ativar Modo Arena
             </button>
@@ -406,7 +469,7 @@ export default function App() {
                 
                 <label className="block text-sm font-medium text-gray-400 mb-2">📝 Ou/e Planejamento Futuro</label>
                 <textarea 
-                  className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all h-28 resize-none placeholder-gray-600"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all h-28 resize-none placeholder-gray-600 text-white"
                   placeholder="Nomes soltos ou log de matricula..."
                   value={s.matricula}
                   onChange={e => updateStudent(idx, 'matricula', e.target.value)}
@@ -460,8 +523,7 @@ export default function App() {
                         {apiData.students.map(s => (
                           <td key={s.nome} className="p-4 min-w-[140px]">
                             <div className="flex items-center gap-3">
-                              {/* As classes "hidden md:block" foram removidas abaixo */}
-                              <div className="w-full bg-black/50 h-2 rounded-full overflow-hidden border border-white/5">
+                              <div className="w-full bg-black/50 h-2 rounded-full overflow-hidden hidden md:block border border-white/5">
                                 <div className="bg-gradient-to-r from-indigo-500 to-pink-500 h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${r[s.nome]}%` }}></div>
                               </div>
                               <span className="text-sm font-mono text-gray-300 w-12 text-right">{r[s.nome].toFixed(1)}%</span>
@@ -474,6 +536,34 @@ export default function App() {
                 </table>
               </div>
             </div>
+
+            {/* Integração: Matérias em Comum (Arena) */}
+            {isArena && apiData.materias_comum && apiData.materias_comum.length > 0 && (
+              <div className="glass-panel p-8 rounded-3xl animate-fade-in-up" style={{ animationDelay: '0.25s' }}>
+                <h2 className="text-2xl font-semibold tracking-tight text-white flex items-center gap-3 mb-6">
+                  <span className="p-2 bg-pink-500/10 text-pink-400 rounded-lg">🤝</span> Matérias em Comum
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {apiData.materias_comum.map((mat, i) => (
+                    <div key={i} className="bg-black/30 border border-white/5 p-5 rounded-2xl hover:bg-white/[0.02] transition-colors relative overflow-hidden group">
+                      <div className="absolute inset-0 bg-gradient-to-br from-pink-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                      <div className="relative z-10">
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="text-xs text-pink-400 font-mono bg-pink-500/10 px-2 py-1 rounded-md">{mat.codigo}</span>
+                          <span className="text-xs text-gray-400 font-mono bg-white/5 px-2 py-1 rounded-md">{mat.qtd} alunos</span>
+                        </div>
+                        <h3 className="text-white font-medium text-sm mb-4 leading-snug">{mat.nome}</h3>
+                        <div className="flex flex-wrap gap-2">
+                          {mat.alunos.map((aluno, idx) => (
+                            <span key={idx} className="text-[10px] uppercase font-bold tracking-wider bg-white/10 border border-white/10 text-gray-200 px-2 py-1 rounded-md">{aluno}</span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="glass-panel p-8 rounded-3xl animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
               <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6 border-b border-white/10 pb-6">

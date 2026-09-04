@@ -29,6 +29,47 @@ app.add_middleware(
 def health_check():
     return {"status": "A API da UFABC está online e operando."}
 
+# ==============================================================
+# CARREGAMENTO GLOBAL DOS DADOS (Para Scripts de Grade e Comum)
+# ==============================================================
+CAMINHO_MATRICULAS = "DADOS_MATRICULADOS__.csv"
+CAMINHO_DISCIPLINAS = "resumo_disciplinas.csv"
+
+try:
+    df_disc_global = pd.read_csv(CAMINHO_DISCIPLINAS, sep=';', encoding='utf-8-sig')
+except Exception as e:
+    print(f"Aviso: Não foi possível carregar {CAMINHO_DISCIPLINAS}: {e}")
+    df_disc_global = pd.DataFrame()
+
+try:
+    df_mat_global = pd.read_csv(CAMINHO_MATRICULAS, sep=';', encoding='utf-8-sig', dtype={'RA': str})
+    df_mat_global['RA'] = df_mat_global['RA'].astype(str).str.strip()
+except Exception as e:
+    print(f"Aviso: Não foi possível carregar {CAMINHO_MATRICULAS}: {e}")
+    df_mat_global = pd.DataFrame()
+
+# ==============================================================
+# LÓGICA DE ALOCAÇÃO DE HORÁRIOS (Script 1)
+# ==============================================================
+def alocar_horario_json(grade, dia, inicio, fim, info):
+    slot = f"{inicio} - {fim}"
+    if slot in grade and dia in grade[slot]:
+        grade[slot][dia].append(info)
+    elif inicio == "08:00" and fim == "12:00":
+        if dia in grade["08:00 - 10:00"]:
+            grade["08:00 - 10:00"][dia].append(info)
+            grade["10:00 - 12:00"][dia].append(info)
+    elif inicio == "14:00" and fim == "18:00":
+        if dia in grade["14:00 - 16:00"]:
+            grade["14:00 - 16:00"][dia].append(info)
+            grade["16:00 - 18:00"][dia].append(info)
+    elif inicio == "19:00" and fim == "23:00":
+        if dia in grade["19:00 - 21:00"]:
+            grade["19:00 - 21:00"][dia].append(info)
+            grade["21:00 - 23:00"][dia].append(info)
+
+# ==============================================================
+
 COLUNAS = [
     "ano_periodo", "categoria", "codigo", "componente_curricular",
     "creditos", "ch", "ch_ext", "turma", "conceito", "situacao", "docentes"
@@ -339,8 +380,34 @@ async def simular_cenarios(request: Request):
         students_extracted.append({
             "nome": nome, "matricula": matricula, "ra": ra, "curso_base": curso_base, "historico_limpo": historico_limpo
         })
+
+    # ==============================================================
+    # SCRIPT 2: MATÉRIAS EM COMUM (Arena)
+    # ==============================================================
+    materias_comum_list = []
+    alunos_dict = {ext["ra"]: ext["nome"] for ext in students_extracted if ext["ra"]}
     
+    if len(alunos_dict) > 1 and not df_mat_global.empty:
+        df_filtrado_comum = df_mat_global[df_mat_global['RA'].isin(alunos_dict.keys())].copy()
+        if not df_filtrado_comum.empty:
+            df_filtrado_comum['Nome_Aluno'] = df_filtrado_comum['RA'].map(alunos_dict)
+            agrupado = df_filtrado_comum.groupby(['Código_turma', 'Nome_Disciplina'])['Nome_Aluno'].apply(lambda x: list(set(x))).reset_index()
+            em_comum = agrupado[agrupado['Nome_Aluno'].apply(len) > 1].copy()
+            if not em_comum.empty:
+                em_comum['Qtd_Alunos'] = em_comum['Nome_Aluno'].apply(len)
+                em_comum = em_comum.sort_values(by=['Qtd_Alunos', 'Nome_Disciplina'], ascending=[False, True])
+                for _, row in em_comum.iterrows():
+                    materias_comum_list.append({
+                        "codigo": row['Código_turma'],
+                        "nome": row['Nome_Disciplina'],
+                        "qtd": row['Qtd_Alunos'],
+                        "alunos": sorted(row['Nome_Aluno'])
+                    })
+
     students_data = []
+    horarios_padrao = ["08:00 - 10:00", "10:00 - 12:00", "14:00 - 16:00", "16:00 - 18:00", "19:00 - 21:00", "21:00 - 23:00"]
+    dias_semana = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado"]
+
     for ext in students_extracted:
         ra = ext["ra"]
         curso_base = ext["curso_base"]
@@ -373,17 +440,14 @@ async def simular_cenarios(request: Request):
         texto_iniciais = "\n".join(materias_iniciais)
         disciplinas_iniciais = extrair_texto_matricula(texto_iniciais, dicionario_ch_global, catalogo_csv_ch, status_padrao='NOVA_MATR')
 
-        # 1. Busca os matriculados atualmente no novo arquivo
         materias_matr = buscar_disciplinas_ra(ra, caminho_csv="DADOS_MATRICULADOS__.csv")
         texto_matr = "\n".join(materias_matr)
         disciplinas_matr = extrair_texto_matricula(texto_matr, dicionario_ch_global, catalogo_csv_ch, status_padrao='MATR')
 
-        # 2. Busca o histórico de reprovações/anteriores
         materias_ra = buscar_disciplinas_ra(ra, caminho_csv="DADOS_UNIFICADOS_ORDENADOS.csv")
         texto_ra = "\n".join(materias_ra)
         disciplinas_ra = extrair_texto_matricula(texto_ra, dicionario_ch_global, catalogo_csv_ch, status_padrao='NOVA_MATR')
         
-        # A injeção na base dita a hierarquia do agrupador: PDF > Matriculado > Histórico Base
         hist_base = ext["historico_limpo"] + disciplinas_matr + disciplinas_ra
         
         hist_atual = [(m, c, s) for m, c, s in hist_base if s == 'APR']
@@ -422,9 +486,64 @@ async def simular_cenarios(request: Request):
                 "projecao": {"metricas": _calcular_cenario(hist_proj, dados), "listas": agrupar_listas(hist_proj)},
                 "novo": {"metricas": _calcular_cenario(hist_novo, dados), "listas": agrupar_listas(hist_novo)}
             }
-        students_data.append({"nome": ext["nome"], "cursos": cursos_resultados})
+            
+        # ==============================================================
+        # SCRIPT 1: MONTAGEM DA GRADE POR ESTUDANTE
+        # ==============================================================
+        grade_q1 = {horario: {dia: [] for dia in dias_semana} for horario in horarios_padrao}
+        grade_q2 = {horario: {dia: [] for dia in dias_semana} for horario in horarios_padrao}
         
-    return {"status": "success", "students": students_data, "cursos_disponiveis": list(cursos_bd.keys())}
+        if ra and not df_mat_global.empty and not df_disc_global.empty:
+            turmas_matriculadas = df_mat_global[df_mat_global['RA'] == ra]['Código_turma'].unique().tolist()
+            if turmas_matriculadas:
+                mascara = df_disc_global['Código da matéria'].apply(
+                    lambda x: any(str(cod).upper().strip() in str(x).upper() for cod in turmas_matriculadas)
+                )
+                df_filtrado_disc = df_disc_global[mascara]
+                
+                padrao_hora = r'(segunda|terça|quarta|quinta|sexta|sábado)\s*das\s*(\d{2}:\d{2})\s*[aáàAÁÀ]s\s*(\d{2}:\d{2})(?:,\s*(semanal|quinzenal i+|quinzenal ii))?'
+                
+                for _, row in df_filtrado_disc.iterrows():
+                    cod = str(row['Código da matéria'])
+                    nome = str(row['Nome da completo matéria'])
+                    horarios_str = str(row['Horários'])
+                    
+                    nome_curto = " ".join(nome.split()[:3])
+                    if len(nome_curto) > 20:
+                        nome_curto = nome_curto[:20] + "..."
+                        
+                    bloco_base = {"cod": cod, "nome": nome_curto}
+                    matches = re.findall(padrao_hora, horarios_str, flags=re.IGNORECASE)
+                    
+                    for dia, inicio, fim, freq in matches:
+                        dia = dia.lower()
+                        freq_low = freq.lower() if freq else ""
+                        b_q1, b_q2 = dict(bloco_base), dict(bloco_base)
+                        
+                        if "quinzenal i" in freq_low and "ii" not in freq_low:
+                            b_q1["freq"] = "(Q1)"
+                            alocar_horario_json(grade_q1, dia, inicio, fim, b_q1)
+                        elif "quinzenal ii" in freq_low:
+                            b_q2["freq"] = "(Q2)"
+                            alocar_horario_json(grade_q2, dia, inicio, fim, b_q2)
+                        else:
+                            b_q1["freq"] = ""
+                            b_q2["freq"] = ""
+                            alocar_horario_json(grade_q1, dia, inicio, fim, b_q1)
+                            alocar_horario_json(grade_q2, dia, inicio, fim, b_q2)
+
+        students_data.append({
+            "nome": ext["nome"], 
+            "cursos": cursos_resultados,
+            "grade": {"q1": grade_q1, "q2": grade_q2}
+        })
+        
+    return {
+        "status": "success", 
+        "students": students_data, 
+        "cursos_disponiveis": list(cursos_bd.keys()),
+        "materias_comum": materias_comum_list
+    }
 
 dist_path = os.path.join(os.path.dirname(__file__), "dist")
 
