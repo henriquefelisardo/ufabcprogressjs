@@ -440,7 +440,7 @@ async def simular_cenarios(request: Request):
         texto_iniciais = "\n".join(materias_iniciais)
         disciplinas_iniciais = extrair_texto_matricula(texto_iniciais, dicionario_ch_global, catalogo_csv_ch, status_padrao='NOVA_MATR')
 
-        materias_matr = buscar_disciplinas_ra(ra, caminho_csv="DADOS_MATRICULADOS__.csv")
+        materias_matr = buscar_disciplinas_ra(ra, caminho_csv="DADOS_MATRICULADOS___.csv")
         texto_matr = "\n".join(materias_matr)
         disciplinas_matr = extrair_texto_matricula(texto_matr, dicionario_ch_global, catalogo_csv_ch, status_padrao='MATR')
 
