@@ -32,7 +32,7 @@ def health_check():
 # ==============================================================
 # CARREGAMENTO GLOBAL DOS DADOS (Para Scripts de Grade e Comum)
 # ==============================================================
-CAMINHO_MATRICULAS = "DADOS_MATRICULADOS__.csv"
+CAMINHO_MATRICULAS = "DADOS_MATRICULADOS___.csv"
 CAMINHO_DISCIPLINAS = "resumo_disciplinas.csv"
 
 try:
